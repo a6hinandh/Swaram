@@ -4,7 +4,7 @@ Exposes REST endpoints for Malayalam ASR, structured clinical extraction, and TT
 """
 
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
@@ -20,7 +20,7 @@ app = FastAPI(
 )
 
 app.add_middleware(
-    CORSMSMiddleware,
+    CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
