@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Module 3: Central API & Care Ledger
+  backend:
+    build:
+      context: ./module3-backend-ocr-ledger
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://swaram:swaram_secret@db:5432/swaram_db
+      - SECRET_KEY=swaram-insecure-dev-key
+    depends_on:
+      - db
+    volumes:
+      - ./module3-backend-ocr-ledger:/app
+
+  # Canonical Database
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: swaram
+      POSTGRES_PASSWORD: swaram_secret
+      POSTGRES_DB: swaram_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Module 2: Voice & Intelligence Service
+  voice-service:
+    build:
+      context: ./module2-voice-intelligence
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - VOICE_SERVICE_PORT=8001
+      - LLM_PROVIDER=mock
+    volumes:
+      - ./module2-voice-intelligence:/app
+
+  # Module 4: Mock Government Portal (for Playwright testing)
+  mock-portal:
+    build:
+      context: ./module4-reporting-priorities
+      dockerfile: Dockerfile.portal
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./module4-reporting-priorities:/app
+
+volumes:
+  postgres_data:

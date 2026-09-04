@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CareGap",
+  "description": "Standard schema for an unresolved health care gap in Swaram",
+  "type": "object",
+  "required": [
+    "id",
+    "household_id",
+    "programme",
+    "gap_type",
+    "description",
+    "severity",
+    "status",
+    "last_reviewed_at"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "household_id": { "type": "string", "format": "uuid" },
+    "person_id": { "type": "string", "format": "uuid" },
+    "programme": {
+      "type": "string",
+      "enum": ["maternal", "child_immunisation", "nutrition", "ncd", "mental_health"]
+    },
+    "gap_type": { "type": "string" },
+    "description": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_type", "observed_at"],
+        "properties": {
+          "source_record_id": { "type": "string" },
+          "source_type": { "type": "string" },
+          "observed_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "needs_information",
+        "action_ready",
+        "action_in_progress",
+        "reported",
+        "resolved",
+        "declined",
+        "unable_to_complete"
+      ]
+    },
+    "due_date": { "type": "string", "format": "date" },
+    "owner": { "type": "string" },
+    "recommended_action": { "type": "string" },
+    "required_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question_id", "question_text_ml", "question_text_en"],
+        "properties": {
+          "question_id": { "type": "string" },
+          "question_text_ml": { "type": "string" },
+          "question_text_en": { "type": "string" },
+          "field_target": { "type": "string" }
+        }
+      }
+    },
+    "last_reviewed_at": { "type": "string", "format": "date-time" },
+    "resolution_evidence": { "type": "string" }
+  }
+}

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mock Government Health Portal (RCH / ANMOL Demonstration)</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #F8FAFC; margin: 0; padding: 24px; color: #1E293B; }
+    .container { max-width: 680px; margin: 0 auto; background: #FFFFFF; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px; border-top: 6px solid #1E3A8A; }
+    h1 { font-size: 20px; color: #1E3A8A; margin-bottom: 4px; }
+    p.sub { font-size: 13px; color: #64748B; margin-top: 0; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #334155; }
+    input[type="text"], input[type="number"], select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 14px; }
+    input:focus { outline: none; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
+    .alert-banner { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 13px; color: #1E40AF; }
+    .btn-submit { background: #1E3A8A; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-submit:hover { background: #1E40AF; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>National Health Mission - Maternal & Child Health Form</h1>
+    <p class="sub">ASHA Field Visit Data Reporting Portal (Controlled Simulation)</p>
+
+    <div class="alert-banner">
+      <strong>Notice:</strong> This controlled mock endpoint verifies automated Playwright field population from confirmed Swaram visit data.
+    </div>
+
+    <form id="rchForm" method="POST" action="/submit-form">
+      <div class="form-group">
+        <label for="beneficiaryName">Beneficiary Name</label>
+        <input type="text" id="beneficiaryName" name="beneficiary_name" placeholder="Full Name" required>
+      </div>
+
+      <div class="form-group">
+        <label for="gestationalWeeks">Gestational Age (Weeks)</label>
+        <input type="number" id="gestationalWeeks" name="gestational_weeks" min="1" max="42">
+      </div>
+
+      <div class="form-group">
+        <label for="systolicBP">Systolic Blood Pressure (mmHg)</label>
+        <input type="number" id="systolicBP" name="systolic_bp" placeholder="e.g. 120">
+      </div>
+
+      <div class="form-group">
+        <label for="diastolicBP">Diastolic Blood Pressure (mmHg)</label>
+        <input type="number" id="diastolicBP" name="diastolic_bp" placeholder="e.g. 80">
+      </div>
+
+      <div class="form-group">
+        <label for="ifaTablets">Iron Folic Acid (IFA) Tablets Distributed</label>
+        <select id="ifaTablets" name="ifa_tablets">
+          <option value="none">None</option>
+          <option value="30">30 Tablets (1 Month)</option>
+          <option value="60">60 Tablets (2 Months)</option>
+          <option value="100">100 Tablets (Full Course)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="nextFollowUpDate">Next Scheduled Visit Date</label>
+        <input type="text" id="nextFollowUpDate" name="follow_up_date" placeholder="YYYY-MM-DD">
+      </div>
+
+      <button type="submit" id="submitButton" class="btn-submit">Submit Record</button>
+    </form>
+  </div>
+</body>
+</html>
