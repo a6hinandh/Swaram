@@ -7,9 +7,10 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  TextInput
 } from 'react-native';
-import { apiClient, ApiCallStatus } from './src/api/apiClient';
+import { apiClient, ApiCallStatus, getActiveHost, setActiveHost } from './src/api/apiClient';
 import {
   HouseholdSummary,
   HouseholdCareLedger,
@@ -19,6 +20,8 @@ import {
 
 export default function App() {
   // State for connectivity & Basic Call demonstration
+  const [serverIp, setServerIp] = useState<string>(getActiveHost());
+  const [showIpConfig, setShowIpConfig] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<string>('Checking backend...');
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [isCallingApi, setIsCallingApi] = useState<boolean>(false);
@@ -128,22 +131,66 @@ export default function App() {
         <View style={[styles.networkBanner, isBackendConnected ? styles.bannerOnline : styles.bannerOffline]}>
           <View style={styles.bannerRow}>
             <View style={[styles.statusDot, isBackendConnected ? styles.dotGreen : styles.dotAmber]} />
-            <Text style={styles.bannerText}>
-              Backend Status: <Text style={{ fontWeight: 'bold' }}>{backendStatus}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerText}>
+                Backend: <Text style={{ fontWeight: 'bold' }}>{backendStatus}</Text>
+              </Text>
+              <Text style={styles.ipSubtitleText}>
+                Target: http://{serverIp}:8000
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              style={styles.configButton}
+              onPress={() => setShowIpConfig(!showIpConfig)}
+            >
+              <Text style={styles.configButtonText}>{showIpConfig ? 'Close' : 'IP'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.testCallButton}
+              onPress={runBasicCall}
+              disabled={isCallingApi}
+            >
+              {isCallingApi ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.testCallButtonText}>Test Call</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Dynamic IP Configuration Bar (Shown when IP button is tapped) */}
+        {showIpConfig && (
+          <View style={styles.ipConfigCard}>
+            <Text style={styles.ipConfigLabel}>Configure Computer / Backend IP:</Text>
+            <View style={styles.ipInputRow}>
+              <TextInput
+                style={styles.ipInput}
+                value={serverIp}
+                onChangeText={setServerIp}
+                placeholder="e.g. 172.18.100.139"
+                autoCapitalize="none"
+                keyboardType="numeric"
+              />
+              <TouchableOpacity
+                style={styles.ipSaveButton}
+                onPress={() => {
+                  setActiveHost(serverIp);
+                  setShowIpConfig(false);
+                  runBasicCall();
+                }}
+              >
+                <Text style={styles.ipSaveButtonText}>Save & Test</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.ipHelpText}>
+              Note: Mobile phones cannot use "localhost". Your computer's current Wi-Fi IP is: <Text style={{ fontWeight: 'bold' }}>172.18.100.139</Text>
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.testCallButton}
-            onPress={runBasicCall}
-            disabled={isCallingApi}
-          >
-            {isCallingApi ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.testCallButtonText}>Test API Call</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        )}
 
         {/* Selected Household Overview Card */}
         {selectedHousehold && (
@@ -353,6 +400,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1F2937'
   },
+  ipSubtitleText: {
+    fontSize: 10,
+    color: '#4B5563',
+    marginTop: 2
+  },
+  configButton: {
+    backgroundColor: '#E5E7EB',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6
+  },
+  configButtonText: {
+    color: '#374151',
+    fontSize: 11,
+    fontWeight: '600'
+  },
   testCallButton: {
     backgroundColor: '#0B3D2E',
     paddingHorizontal: 12,
@@ -363,6 +426,51 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: 'bold'
+  },
+  ipConfigCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderColor: '#D1D5DB',
+    borderWidth: 1
+  },
+  ipConfigLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 6
+  },
+  ipInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center'
+  },
+  ipInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 13,
+    backgroundColor: '#F8FAFC'
+  },
+  ipSaveButton: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6
+  },
+  ipSaveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  ipHelpText: {
+    fontSize: 10,
+    color: '#6B7280',
+    marginTop: 6
   },
   card: {
     backgroundColor: '#FFFFFF',

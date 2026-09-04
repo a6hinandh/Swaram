@@ -16,9 +16,35 @@ import {
   MOCK_VISIT_DRAFT_RESPONSE
 } from '../data/mockData';
 
-// Configurable endpoints (defaults to standard ports for Module 3 & Module 2)
-const BACKEND_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-const VOICE_BASE_URL = process.env.EXPO_PUBLIC_VOICE_API_URL || 'http://localhost:8001/api/v1';
+import { Platform, NativeModules } from 'react-native';
+
+/**
+ * Auto-detects the development machine's IP address.
+ * On mobile devices (iOS/Android), 'localhost' points to the phone itself,
+ * so we resolve the host machine's LAN IP.
+ */
+function getDefaultHost(): string {
+  if (Platform.OS === 'web') {
+    return 'localhost';
+  }
+  const scriptURL = NativeModules?.SourceCode?.scriptURL;
+  if (scriptURL) {
+    const host = scriptURL.split('://')[1]?.split('/')[0]?.split(':')[0];
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return host;
+    }
+  }
+  return '172.18.100.139'; // Computer Wi-Fi LAN IP
+}
+
+let activeHost = process.env.EXPO_PUBLIC_HOST || getDefaultHost();
+
+export const getBackendBaseUrl = () => `http://${activeHost}:8000/api/v1`;
+export const getVoiceBaseUrl = () => `http://${activeHost}:8001/api/v1`;
+export const getActiveHost = () => activeHost;
+export const setActiveHost = (newHost: string) => {
+  activeHost = newHost.trim().replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+};
 
 export interface ApiCallStatus<T> {
   data: T;
@@ -33,18 +59,19 @@ export const apiClient = {
    * Pings the Module 3 FastAPI backend to verify connectivity
    */
   async checkBackendHealth(): Promise<ApiCallStatus<{ status: string; service: string }>> {
+    const baseUrl = getBackendBaseUrl();
     try {
-      const response = await fetch(`${BACKEND_BASE_URL.replace('/api/v1', '')}/health`, {
+      const response = await fetch(`${baseUrl.replace('/api/v1', '')}/health`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(2500)
+        signal: AbortSignal.timeout(4000)
       });
       if (response.ok) {
         const json = await response.json();
         return {
           data: json,
           isMockFallback: false,
-          message: 'Connected to live Module 3 backend.',
+          message: `Connected to live Module 3 backend (${activeHost}:8000).`,
           statusCode: response.status
         };
       }
@@ -53,7 +80,7 @@ export const apiClient = {
       return {
         data: { status: 'offline_mode', service: 'swaram-mobile-local' },
         isMockFallback: true,
-        message: `Module 3 backend unreachable (${err.message || 'Offline'}). Operating in offline-safe mock mode.`
+        message: `Module 3 backend unreachable at ${baseUrl} (${err.message || 'Offline'}). Operating in offline-safe mock mode.`
       };
     }
   },
@@ -63,9 +90,9 @@ export const apiClient = {
    */
   async getHouseholds(): Promise<ApiCallStatus<HouseholdSummary[]>> {
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/households`, {
+      const response = await fetch(`${getBackendBaseUrl()}/households`, {
         method: 'GET',
-        signal: AbortSignal.timeout(2500)
+        signal: AbortSignal.timeout(4000)
       });
       if (response.ok) {
         const json = await response.json();
@@ -91,9 +118,9 @@ export const apiClient = {
    */
   async getCareLedger(householdId: string): Promise<ApiCallStatus<HouseholdCareLedger>> {
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/ledger/${householdId}`, {
+      const response = await fetch(`${getBackendBaseUrl()}/ledger/${householdId}`, {
         method: 'GET',
-        signal: AbortSignal.timeout(2500)
+        signal: AbortSignal.timeout(4000)
       });
       if (response.ok) {
         const json = await response.json();
@@ -120,11 +147,11 @@ export const apiClient = {
    */
   async processVoiceVisit(audioUri?: string): Promise<ApiCallStatus<VisitDraft>> {
     try {
-      const response = await fetch(`${VOICE_BASE_URL}/voice/process`, {
+      const response = await fetch(`${getVoiceBaseUrl()}/voice/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audio_uri: audioUri, language: 'ml' }),
-        signal: AbortSignal.timeout(4000)
+        signal: AbortSignal.timeout(5000)
       });
       if (response.ok) {
         const json = await response.json();
@@ -151,11 +178,11 @@ export const apiClient = {
    */
   async submitConfirmedVisit(visit: ConfirmedVisit): Promise<ApiCallStatus<{ status: string; id: string }>> {
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/visits`, {
+      const response = await fetch(`${getBackendBaseUrl()}/visits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(visit),
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(4000)
       });
       if (response.ok) {
         const json = await response.json();
