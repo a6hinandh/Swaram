@@ -182,10 +182,13 @@ export const apiClient = {
       let systolic: number | undefined;
       let diastolic: number | undefined;
       if (clinical.measurements.blood_pressure) {
-        const parts = clinical.measurements.blood_pressure.split('/');
-        if (parts.length === 2) {
+        const bpStr = String(clinical.measurements.blood_pressure).trim();
+        const parts = bpStr.split(/[\/\s-]+/);
+        if (parts.length >= 2) {
           systolic = parseInt(parts[0], 10) || undefined;
           diastolic = parseInt(parts[1], 10) || undefined;
+        } else if (parts.length === 1) {
+          systolic = parseInt(parts[0], 10) || undefined;
         }
       }
 
@@ -285,15 +288,21 @@ export const apiClient = {
    * Submit Confirmed Survey & Clinical Visit to Central System
    */
   async submitConfirmedVisit(visit: ConfirmedVisit): Promise<ApiCallStatus<{ status: string; id: string }>> {
+    const url = `${getBackendBaseUrl()}/visits`;
+    console.log(`[ApiClient] Submitting confirmed visit to ${url}...`, JSON.stringify(visit, null, 2));
     try {
-      const response = await fetch(`${getBackendBaseUrl()}/visits`, {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify(visit),
-        signal: AbortSignal.timeout(4000)
+        signal: AbortSignal.timeout(6000)
       });
       if (response.ok) {
         const json = await response.json();
+        console.log(`[ApiClient] Backend /visits response:`, json);
         return {
           data: json,
           isMockFallback: false,
@@ -301,8 +310,11 @@ export const apiClient = {
           statusCode: response.status
         };
       }
-      throw new Error(`HTTP ${response.status}`);
-    } catch {
+      const errText = await response.text();
+      console.warn(`[ApiClient] /visits HTTP ${response.status}:`, errText);
+      throw new Error(`HTTP ${response.status}: ${errText}`);
+    } catch (err: any) {
+      console.warn(`[ApiClient] submitConfirmedVisit failed:`, err?.message || err);
       return {
         data: { status: 'queued_in_sqlite', id: visit.visit_id },
         isMockFallback: true,

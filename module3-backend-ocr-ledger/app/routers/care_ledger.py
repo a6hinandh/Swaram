@@ -82,16 +82,7 @@ def get_care_ledger(household_id: str):
         malnutrition_trend="High vulnerability - Pediatric weight loss and dietary diversity deficit active"
     )
 
-    if care_ledgers_col is not None:
-        try:
-            care_ledgers_col.update_one(
-                {"household_id": household_id},
-                {"$set": ledger.dict()},
-                upsert=True
-            )
-        except Exception as e:
-            print(f"[MongoDB Error caching ledger] {e}")
-
+    # Return fallback ledger in-memory without saving mock data to database
     return ledger
 
 @router.post("/{household_id}/gaps", response_model=HouseholdCareLedgerSchema)

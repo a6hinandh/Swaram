@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
-  Alert
+  Alert,
+  SafeAreaView
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '../shared/navigation/AppIcon';
 import {
   CookingFuelType,

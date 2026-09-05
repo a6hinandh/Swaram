@@ -11,13 +11,14 @@ from typing import Optional, Dict, Any, List
 
 from asr.adapter import asr_service
 from tts.adapter import tts_service
+from extraction.gemini_extractor import gemini_extractor_service
 from extraction.extractor import extractor_service
 from conversational_closure.gap_closer import CareGapConversationalCloser
 
 app = FastAPI(
     title="Swaram Voice, Survey & Health Intelligence (Module 2)",
     version="2.0.0",
-    description="Malayalam ASR, Conversational Survey Extraction, Malnutrition Screening, and Care-Gap Closure"
+    description="Malayalam ASR, Gemini MongoDB Clinical Extraction, Malnutrition Screening, and Care-Gap Closure"
 )
 
 app.add_middleware(
@@ -33,6 +34,7 @@ class ProcessVoiceRequest(BaseModel):
     transcript: Optional[str] = None
     language: str = "ml"
     household_id: Optional[str] = None
+    person_id: Optional[str] = None
 
 class GapQuestionRequest(BaseModel):
     care_gap: Dict[str, Any]
@@ -49,10 +51,13 @@ def health():
         "status": "ok",
         "service": "module2-voice-intelligence",
         "platform": "Swaram Next-Gen ASHA Platform",
-        "model_adapters": ["SarvamAI-Saaras-v4", "IndicConformer", "IndicF5"],
+        "model_adapters": ["SarvamAI-Saaras-v4", "Gemini", "IndicConformer", "IndicF5"],
+        "schema_standard": "mongodb_clinical_encounters_v1",
         "capabilities": [
             "Malayalam Voice Survey Extraction",
-            "Malnutrition Screening",
+            "Gemini Canonical MongoDB Clinical Encounter Parsing",
+            "Longitudinal Vitals Baseline & Spurt Analysis",
+            "WHO Z-Score Malnutrition Screening",
             "Proactive Missing Field Follow-up"
         ]
     }
@@ -61,20 +66,47 @@ def health():
 @app.post("/api/v1/voice/process-survey")
 def process_voice_visit(request: ProcessVoiceRequest):
     """
-    Core pipeline: Malayalam Audio -> ASR -> Clinical & Survey Extraction -> Malnutrition Checks -> VisitDraft
+    Core pipeline: Malayalam Audio -> ASR -> Gemini Structured Clinical Extraction -> MongoDB Encounter Document
     """
+    print(f"\n=======================================================")
+    print(f"🎙️ [Module 2 API] Incoming Voice Process Request:")
+    print(f"   • Transcript provided: {bool(request.transcript)} ('{request.transcript}')")
+    print(f"   • Audio URI provided: {bool(request.audio_uri)}")
+    print(f"   • Household ID: {request.household_id}, Person ID: {request.person_id}")
+
     # 1. ASR Step
     if request.transcript:
         transcript = request.transcript
-        confidence = 0.95
+        confidence = 0.98
     else:
         transcript, confidence = asr_service.transcribe(request.audio_uri)
 
-    # 2. Extraction & Deterministic Validation Step
-    draft = extractor_service.extract_from_transcript(transcript, household_id=request.household_id)
-    draft["confidence"] = confidence
+    print(f"📝 [Module 2 API] Active Transcript for Extraction: '{transcript}'")
 
-    return draft
+    # 2. Gemini Clinical Encounter Extraction (Matching MongoDB Production Schema)
+    encounter = gemini_extractor_service.extract_clinical_encounter(
+        transcript=transcript,
+        household_id=request.household_id,
+        person_id=request.person_id
+    )
+    encounter["confidence"] = confidence
+
+    # 3. Attach Missing Field Follow-up Prompts
+    measurements = encounter.get("measurements", {})
+    malnutrition = encounter.get("malnutrition", {})
+    missing_prompts = CareGapConversationalCloser.get_missing_survey_prompts(
+        extracted_vitals={
+            "systolic_bp": measurements.get("blood_pressure_sys"),
+            "diastolic_bp": measurements.get("blood_pressure_dia"),
+            "weight_kg": measurements.get("weight_kg")
+        },
+        extracted_malnutrition=malnutrition
+    )
+    encounter["missing_field_prompts"] = missing_prompts
+
+    print(f"✅ [Module 2 API] Returning Extracted Encounter Document with Person: {encounter.get('person')}")
+    print(f"=======================================================\n")
+    return encounter
 
 @app.post("/api/v1/voice/resolve-missing-field")
 def resolve_missing_field(req: ResolveFieldRequest):

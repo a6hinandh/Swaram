@@ -386,21 +386,40 @@ The input text is transcribed from spoken audio (which may be noisy Malayalam, M
 IMPORTANT PRIVACY RULE: The patient's personal identifiers have been pre-sanitized into tokens like <PATIENT_01>.
 Never attempt to unmask, infer, or hallucinate real personal identities. Preserve the exact <PATIENT_01> token in person.name.
 
-Extract all clinical information into this EXACT JSON structure:
+Extract all clinical information into this EXACT JSON structure matching the Swaram MongoDB production schema:
 {
   "person": {
-    "name": "<PATIENT_01>" or token,
+    "name": "<PATIENT_01>",
     "age": number or null,
-    "gender": "female" | "male" | "unknown"
+    "gender": "female" | "male" | "other",
+    "life_stage": "infant" | "child" | "adolescent" | "adult" | "elderly",
+    "pregnancy_weeks": number or null
   },
   "measurements": {
-    "blood_pressure": "130/85" (standardized systolic/diastolic) or null,
+    "blood_pressure": "148/92" (string or null),
+    "blood_pressure_sys": number or null,
+    "blood_pressure_dia": number or null,
+    "blood_sugar_mg_dl": number or null,
     "weight_kg": number or null,
     "height_cm": number or null,
     "pulse_bpm": number or null,
     "temperature_f": number or null,
     "spo2_percent": number or null,
-    "blood_sugar_mg_dl": number or null
+    "muac_cm": number or null
+  },
+  "malnutrition": {
+    "muac_cm": number or null,
+    "wasting_status": "severe_acute_malnutrition" | "moderate_wasting" | "normal",
+    "dietary_diversity_score": number or null,
+    "consumed_milk": boolean,
+    "consumed_eggs": boolean,
+    "consumed_pulses": boolean
+  },
+  "mental_health": {
+    "anxiety_score": number or null,
+    "depression_score": number or null,
+    "total_score": number or null,
+    "risk_level": "normal" | "mild" | "moderate" | "severe"
   },
   "complaints": [
     { "symptom": string, "duration": string, "severity": "mild" | "moderate" | "severe" | "unknown" }
@@ -427,28 +446,35 @@ Only return valid JSON. Do not include markdown ticks or explanation.`;
       }
     };
 
-    const modelsToTry = [ 'gemini-3.6-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro'];
     let rawJson: string | undefined;
+
+    console.log(`[Gemini Mobile Service] Sending clinical prompt to Gemini (Models: ${modelsToTry.join(', ')})...`);
+    console.log(`[Gemini Mobile Service] De-Identified Input Text:`, sanitizedText);
 
     for (const model of modelsToTry) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+        console.log(`[Gemini Mobile Service] Calling ${model}...`);
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
 
+        console.log(`[Gemini Mobile Service] ${model} Response Status: HTTP ${response.status}`);
+
         if (response.ok) {
           const data = await response.json();
           rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          console.log(`[Gemini Mobile Service] ${model} Raw Output:`, rawJson);
           if (rawJson) break;
         } else {
           const errBody = await response.text().catch(() => '');
-          console.warn(`[Gemini Privacy Proxy] ${model} HTTP ${response.status}:`, errBody);
+          console.warn(`[Gemini Mobile Service] ${model} HTTP ${response.status}:`, errBody);
         }
       } catch (e: any) {
-        console.warn(`[Gemini Privacy Proxy] ${model} error:`, e.message || e);
+        console.warn(`[Gemini Mobile Service] ${model} error:`, e.message || e);
       }
     }
       if (rawJson) {

@@ -354,16 +354,61 @@ export default function App() {
 
   // Human Confirmation Gate
   const handleConfirmVisit = async () => {
-    if (!visitDraft) return;
+    if (!visitDraft && !structuredRecord) return;
 
+    let personUpdates = visitDraft?.person_updates || [];
+    let sysBp: number | undefined;
+    let diaBp: number | undefined;
+    if (structuredRecord?.measurements?.blood_pressure) {
+      const bpStr = String(structuredRecord.measurements.blood_pressure).trim();
+      const parts = bpStr.split(/[\/\s-]+/);
+      if (parts.length >= 2) {
+        sysBp = parseInt(parts[0], 10) || undefined;
+        diaBp = parseInt(parts[1], 10) || undefined;
+      } else if (parts.length === 1) {
+        sysBp = parseInt(parts[0], 10) || undefined;
+      }
+    }
+
+    if (personUpdates.length === 0 && structuredRecord) {
+      personUpdates = [{
+        person_id: structuredRecord.person.person_id || `p-${Date.now()}`,
+        name: structuredRecord.person.name || '',
+        age: structuredRecord.person.age || undefined,
+        gender: structuredRecord.person.sex,
+        vitals: {
+          systolic_bp: sysBp,
+          diastolic_bp: diaBp,
+          weight_kg: structuredRecord.measurements.weight_kg || undefined,
+          height_cm: structuredRecord.measurements.height_cm || undefined,
+          pulse_bpm: structuredRecord.measurements.pulse_bpm || undefined
+        },
+        symptoms: structuredRecord.health_status.complaints.map(c => c.symptom),
+        medications_given: structuredRecord.health_status.medications.map(m => m.name),
+        services_provided: ['Vitals check']
+      }];
+    } else if (personUpdates.length > 0) {
+      if (structuredRecord?.person?.name && (!personUpdates[0].name || personUpdates[0].name === 'Beneficiary' || personUpdates[0].name === 'Patient')) {
+        personUpdates[0].name = structuredRecord.person.name;
+      }
+      if (sysBp && (!personUpdates[0].vitals || !personUpdates[0].vitals.systolic_bp)) {
+        personUpdates[0].vitals = {
+          ...(personUpdates[0].vitals || {}),
+          systolic_bp: sysBp,
+          diastolic_bp: diaBp
+        };
+      }
+    }
+
+    const visitId = visitDraft?.visit_id || structuredRecord?.visit?.visit_id || `visit-${Date.now()}`;
     const confirmed: ConfirmedVisit = {
-      visit_id: visitDraft.visit_id,
+      visit_id: visitId,
       household_id: 'community-visit',
-      worker_id: visitDraft.worker_id || 'w-asha-001',
+      worker_id: visitDraft?.worker_id || 'w-asha-001',
       timestamp: new Date().toISOString(),
-      person_updates: visitDraft.person_updates,
-      survey_fields: visitDraft.survey_fields,
-      malnutrition_assessment: visitDraft.malnutrition_assessment,
+      person_updates: personUpdates,
+      survey_fields: visitDraft?.survey_fields || [],
+      malnutrition_assessment: visitDraft?.malnutrition_assessment,
       confirmed_by_worker_at: new Date().toISOString(),
       sync_status: isBackendConnected ? 'synced' : 'pending'
     };
