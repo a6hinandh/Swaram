@@ -21,7 +21,7 @@ const TABS: TabItem[] = [
   { id: 'core', label: 'Survey', icon: 'mic' },
   { id: 'mental', label: 'Mental', icon: 'mental' },
   { id: 'climate', label: 'Climate', icon: 'climate' },
-  { id: 'lifestyle', label: 'Lifestyle', icon: 'lifestyle' },
+  { id: 'lifestyle', label: 'CBAC Survey', icon: 'lifestyle' },
   { id: 'vitals', label: 'Vitals', icon: 'vitals' }
 ];
 

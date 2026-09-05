@@ -378,7 +378,7 @@ export default function App() {
             {activeTab === 'core' && 'Next-Gen ASHA Worker Platform (വാർഡ് 4, ആലുവ)'}
             {activeTab === 'mental' && 'Mental Health Voice Screening Protocol'}
             {activeTab === 'climate' && 'Environmental & Climate Risk Monitoring'}
-            {activeTab === 'lifestyle' && 'NCD Lifestyle & Behavioral Risk Tracking'}
+            {activeTab === 'lifestyle' && 'CBAC / CABC Survey (Community Based Assessment Checklist)'}
             {activeTab === 'vitals' && 'Longitudinal Vitals Baseline & Delta Detector'}
           </Text>
           {activeTab === 'core' && (
@@ -509,6 +509,33 @@ export default function App() {
           </View>
         )}
 
+
+        {/* CBAC / CABC Survey Feature Launcher */}
+        <TouchableOpacity
+          style={styles.cbacLauncherCard}
+          onPress={() => setActiveTab('lifestyle')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.cbacLauncherLeft}>
+            <View style={styles.cbacIconBadge}>
+              <Text style={styles.cbacIconEmoji}>📋</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.cbacHeaderRow}>
+                <Text style={styles.cbacLauncherTitle}>CBAC / CABC സർവേ</Text>
+                <View style={styles.cbacTag}>
+                  <Text style={styles.cbacTagText}>MoHFW • NHM (30+)</Text>
+                </View>
+              </View>
+              <Text style={styles.cbacLauncherSubtitle}>
+                കമ്മ്യൂണിറ്റി ബേസ്ഡ് അസസ്സ്മെന്റ് ചെക്ക്‌ലിസ്റ്റ് (NCD & Cancer Early Screening)
+              </Text>
+              <Text style={styles.cbacActionPrompt}>
+                സർവേ ആരംഭിക്കുക (Open CBAC Survey) →
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
 
         {/* Conversational Survey Capture Section */}
         <View style={styles.voiceSection}>
@@ -1038,7 +1065,7 @@ export default function App() {
       {/* Feature Module Views */}
       {activeTab === 'mental' && <MentalHealthScreen />}
       {activeTab === 'climate' && <EnvironmentalRiskScreen />}
-      {activeTab === 'lifestyle' && <NcdLifestyleScreen />}
+      {activeTab === 'lifestyle' && <NcdLifestyleScreen onBack={() => setActiveTab('core')} />}
       {activeTab === 'vitals' && <VitalsBaselineScreen />}
 
       {/* Persistent Bottom Tab Navigation Bar */}
@@ -1294,6 +1321,66 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold'
+  },
+
+  cbacLauncherCard: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    elevation: 2
+  },
+  cbacLauncherLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12
+  },
+  cbacIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#065F46',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cbacIconEmoji: {
+    fontSize: 22
+  },
+  cbacHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6
+  },
+  cbacLauncherTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#064E3B'
+  },
+  cbacTag: {
+    backgroundColor: '#047857',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  cbacTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: 'bold'
+  },
+  cbacLauncherSubtitle: {
+    fontSize: 11,
+    color: '#065F46',
+    marginTop: 2,
+    lineHeight: 15
+  },
+  cbacActionPrompt: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#047857',
+    marginTop: 6
   },
 
   voiceSection: {
