@@ -7,6 +7,8 @@ export interface Vitals {
   systolic_bp?: number;
   diastolic_bp?: number;
   weight_kg?: number;
+  height_cm?: number;
+  pulse_bpm?: number;
   temperature_c?: number;
   hemoglobin_g_dl?: number;
 }

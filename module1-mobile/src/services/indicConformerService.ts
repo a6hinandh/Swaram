@@ -1,35 +1,34 @@
 /**
  * Cloud ASR Service (Hugging Face & AI4Bharat)
  * 
- * Strictly transcribes spoken audio to either ENGLISH or MALAYALAM.
- * Disallows and filters/transliterates any other language scripts (e.g. Tamil, Hindi, Telugu, Kannada)
- * to guarantee that only English or Malayalam appears in output.
+ * Strictly transcribes spoken audio to MALAYALAM (മലയാളം).
+ * Transliterates/converts any other Indic scripts (Tamil, Hindi, Telugu, Kannada) into Malayalam.
  */
 
 import { RecordedAudio } from './audioRecorder';
 import { correctMalayalamSpelling } from './malayalamSpellCorrector';
 
-export type LanguageMode = 'auto' | 'ml' | 'en';
+export type LanguageMode = 'ml';
 
 export interface IndicConformerResponse {
   transcript: string;
   confidence: number;
   isMock: boolean;
   message: string;
-  detectedLanguage?: 'English' | 'Malayalam';
+  detectedLanguage?: 'Malayalam';
   executionTimeMs: number;
 }
 
 /**
- * Strict Language Enforcer:
- * Guarantees that transcription is exclusively either ENGLISH or MALAYALAM.
- * - English text (Latin alphabet) is preserved.
- * - Malayalam text (Malayalam script) is preserved.
+ * Strict Malayalam Language Enforcer:
+ * Guarantees that transcription is exclusively MALAYALAM (മലയാളം).
+ * - Native Malayalam text is preserved.
  * - Any other Indian script (Tamil, Hindi/Devanagari, Telugu, Kannada, Bengali, etc.)
- *   that Whisper might mistakenly output is automatically converted to Malayalam script.
+ *   that ASR might mistakenly output is automatically converted to Malayalam script.
+ * - Numbers and Latin clinical abbreviations (BP, mg, kg) are cleanly supported in context.
  * - Any foreign script characters (Cyrillic, Arabic, CJK, etc.) are stripped.
  */
-export function enforceEnglishOrMalayalam(text: string, mode: LanguageMode = 'auto'): string {
+export function enforceEnglishOrMalayalam(text: string, mode: string = 'ml'): string {
   if (!text || !text.trim()) return '';
 
   const out: string[] = [];
@@ -80,15 +79,18 @@ export function enforceEnglishOrMalayalam(text: string, mode: LanguageMode = 'au
 }
 
 // Backward compatibility alias
-export const ensureMalayalamScript = (text: string) => enforceEnglishOrMalayalam(text, 'auto');
+export const ensureMalayalamScript = (text: string) => enforceEnglishOrMalayalam(text, 'ml');
 
 export async function transcribeWithIndicConformer(
   audio: RecordedAudio,
-  langMode: LanguageMode = 'auto'
+  langMode: LanguageMode = 'ml'
 ): Promise<IndicConformerResponse> {
   const startTime = Date.now();
 
-  const hfToken = process.env.EXPO_PUBLIC_HF_TOKEN || '';
+  const hfToken =
+    process.env.EXPO_PUBLIC_HF_TOKEN ||
+    (process.env.EXPO_PUBLIC_AI4BHARAT_API_KEY?.startsWith('hf_') ? process.env.EXPO_PUBLIC_AI4BHARAT_API_KEY : '') ||
+    '';
   const hfEndpoint =
     process.env.EXPO_PUBLIC_HF_ENDPOINT ||
     'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo';
@@ -96,7 +98,7 @@ export async function transcribeWithIndicConformer(
   // 1. Primary: Hugging Face Serverless Inference API
   if (hfToken && hfToken.startsWith('hf_')) {
     try {
-      console.log(`[Hugging Face ASR] Sending audio to ${hfEndpoint} (Mode: ${langMode.toUpperCase()})...`);
+      console.log(`[Hugging Face ASR] Sending audio to ${hfEndpoint} (Language: MALAYALAM)...`);
 
       let bodyData: any = null;
       let contentType = 'audio/wav';
@@ -135,19 +137,15 @@ export async function transcribeWithIndicConformer(
           const json = await response.json();
           const rawText = (json.text || json[0]?.text || '').trim();
 
-          // Enforce strictly English or Malayalam (no Tamil or other languages)
-          const extractedText = enforceEnglishOrMalayalam(rawText, langMode);
-
-          // Detect whether the output is English or Malayalam
-          const isMalayalam = /[\u0D00-\u0D7F]/.test(extractedText);
-          const detectedLanguage: 'English' | 'Malayalam' = isMalayalam ? 'Malayalam' : 'English';
+          // Enforce strictly Malayalam
+          const extractedText = enforceEnglishOrMalayalam(rawText, 'ml');
 
           if (extractedText) {
             const executionTimeMs = Date.now() - startTime;
 
             // PRINT TRANSCRIPTION
             console.log('\n======================================================');
-            console.log(`🗣️ HUGGING FACE INFERENCE TRANSCRIPTION (${detectedLanguage.toUpperCase()} ONLY):`);
+            console.log('🗣️ HUGGING FACE INFERENCE TRANSCRIPTION (MALAYALAM):');
             console.log(extractedText);
             console.log('======================================================\n');
 
@@ -155,8 +153,8 @@ export async function transcribeWithIndicConformer(
               transcript: extractedText,
               confidence: 0.98,
               isMock: false,
-              detectedLanguage,
-              message: `Transcribed to ${detectedLanguage} via Hugging Face Whisper.`,
+              detectedLanguage: 'Malayalam',
+              message: 'Transcribed to Malayalam via Hugging Face Whisper.',
               executionTimeMs,
             };
           }
@@ -181,7 +179,7 @@ export async function transcribeWithIndicConformer(
     ai4bharatEndpoint.startsWith('http')
   ) {
     try {
-      const srcLang = langMode === 'en' ? 'en' : 'ml';
+      const srcLang = 'ml';
       console.log(`[AI4Bharat IndicConformer] Sending to ${ai4bharatEndpoint} (Lang: ${srcLang})...`);
       const payload = {
         pipelineTasks: [
@@ -215,10 +213,10 @@ export async function transcribeWithIndicConformer(
           json?.pipelineResponse?.[0]?.output?.[0]?.source ||
           json?.output?.[0]?.source ||
           '';
-        const cleaned = enforceEnglishOrMalayalam(extracted, langMode);
+        const cleaned = enforceEnglishOrMalayalam(extracted, 'ml');
         if (cleaned) {
           console.log('\n======================================================');
-          console.log('🗣️ AI4BHARAT INDICCONFORMER TRANSCRIPTION:');
+          console.log('🗣️ AI4BHARAT INDICCONFORMER TRANSCRIPTION (MALAYALAM):');
           console.log(cleaned);
           console.log('======================================================\n');
 
@@ -226,8 +224,8 @@ export async function transcribeWithIndicConformer(
             transcript: cleaned,
             confidence: 0.95,
             isMock: false,
-            detectedLanguage: srcLang === 'en' ? 'English' : 'Malayalam',
-            message: 'Transcribed via AI4Bharat IndicConformer.',
+            detectedLanguage: 'Malayalam',
+            message: 'Transcribed via AI4Bharat IndicConformer in Malayalam.',
             executionTimeMs: Date.now() - startTime,
           };
         }
@@ -237,24 +235,11 @@ export async function transcribeWithIndicConformer(
     }
   }
 
-  // 3. Fallback: Baseline Malayalam clinical transcript
+  // 3. Real Error: No mock data!
   const executionTimeMs = Date.now() - startTime;
-  const mockTranscript =
-    langMode === 'en'
-      ? 'Visited Lakshmi. Blood pressure 130/85. Weight 58 kg. Prescribed iron tablets. Follow-up next Thursday.'
-      : 'ലക്ഷ്മിയെ കണ്ടു. ബിപി 130/85 ഉണ്ട്. ഭാരം 58 കിലോ. അയൺ ഗുളിക കൊടുത്തു. അടുത്ത ചെക്കപ്പ് അടുത്ത വ്യാഴാഴ്ച.';
-
-  console.log('\n======================================================');
-  console.log('🗣️ ASR TRANSCRIPTION (FALLBACK BASELINE):');
-  console.log(mockTranscript);
-  console.log('======================================================\n');
-
-  return {
-    transcript: mockTranscript,
-    confidence: 0.94,
-    isMock: true,
-    detectedLanguage: langMode === 'en' ? 'English' : 'Malayalam',
-    message: 'Displayed baseline clinical transcript.',
-    executionTimeMs,
-  };
+  throw new Error(
+    hfToken
+      ? 'ASR transcription service did not detect speech. Please speak clearly into microphone and try again.'
+      : 'Hugging Face ASR token is not configured. Please add EXPO_PUBLIC_HF_TOKEN to module1-mobile/.env.'
+  );
 }
