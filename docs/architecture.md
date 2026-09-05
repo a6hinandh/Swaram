@@ -1,46 +1,55 @@
 # Swaram Technical Architecture & Specifications
+### Next-Generation Conversational ASHA Worker Platform
 
 ## 1. System Overview
-Swaram is a voice-agentic field assistant designed for ASHA workers in India, specifically configured for the Malayalam language context.
+**Swaram** is a complete next-generation frontline healthcare platform designed to replace legacy, form-based ASHA worker mobile apps. Configured natively for the Malayalam language context, it replaces rigid MCQ survey dropdowns with natural language conversation and automated clinical extraction.
 
 ### Core Engineering Principles
-- **Voice-First:** Primary interaction is speaking and listening; zero typing, zero reading.
+- **Conversational-First:** Primary interaction is speaking naturally in Malayalam; zero typing, zero navigation through dense MCQ dropdowns.
+- **Proactive Missing Information Resolution:** Proactively asks the worker targeted conversational follow-up questions for unmentioned mandatory survey fields.
+- **Survey Review Card:** Transparently displays all extracted and clarified fields for worker inspection before submission.
 - **Human Confirmation Gate:** No clinical record or government report is committed without the worker's explicit review and confirmation.
-- **Offline-First:** Mobile field operations function completely offline with SQLite and local sync queues.
-- **Modularity:** 4 distinct modules communicating exclusively through typed contracts.
-- **Explainable Decision Support:** Heuristics and rules are transparent and explainable; no black-box diagnosis.
+- **Overlooked Health Challenges Focus:** First-class screening and tracking for early childhood malnutrition (MUAC, dietary diversity score, wasting/stunting) and maternal nutritional anemia.
+- **Longitudinal Household Memory:** Persistent Unresolved Care Ledger tracking open care needs across Maternal, Child, Malnutrition, and NCD programmes.
+- **Offline-First:** Mobile field operations function completely offline with SQLite and local event queues.
 
 ---
 
 ## 2. End-to-End Pipeline
 
 ```
-ASHA conducts visit
+ASHA conducts household visit
   ↓
-Voice capture on Android (Module 1)
+Voice capture on Swaram Mobile (Module 1)
   ↓
 Malayalam ASR (Module 2 - IndicConformer)
   ↓
-Structured extraction (Module 2 - Constrained Schema)
+Structured survey & clinical extraction (Module 2)
   ↓
-Deterministic validation + Uncertainty detection (Module 2)
+Deterministic physiological validation & Malnutrition check (Module 2)
+  ↓
+Proactive missing field detector:
+  → If mandatory fields missing: Swaram asks conversational follow-up question
+  → ASHA replies naturally by voice; field updated in real-time
   ↓
 Spoken read-back (Module 2 - IndicF5 TTS)
   ↓
-ASHA confirms / corrects (Module 1)
+Swaram Survey Review Card displayed (Module 1)
   ↓
-Canonical household record (Module 3 - FastAPI/PostgreSQL)
+ASHA confirms / edits (Module 1)
+  ↓
+Canonical longitudinal household record (Module 3 - FastAPI/MongoDB/SQLite)
   ↓
 ┌─────────────────┬──────────────────┬──────────────────┐
 ↓                 ↓                  ↓
-Offline DB        OCR/Register       Follow-up ranking
+Offline DB        OCR/Register       Prioritisation ranking
 ↓                 ↓                  ↓
 Sync queue        Reconciliation     Priority list (Module 4)
 └─────────────────┴──────────────────┴──────────────────┘
                   ↓
-          Reporting/Form Adapter (Module 4 - Playwright)
+          Central Reporting Gateway (Module 4 - Playwright)
                   ↓
-          ASHA confirms submit
+          ASHA confirms final submission
 ```
 
 ---
@@ -52,18 +61,18 @@ Sync queue        Reconciliation     Priority list (Module 4)
 | **Mobile Client** | React Native + Expo (TypeScript) | Fast cross-platform development with native audio/camera access |
 | **Local Database** | `expo-sqlite` | Relational local storage supporting offline visits & sync queue |
 | **ASR (Speech-to-Text)** | AI4Bharat IndicConformer | High-accuracy Indian language speech recognition supporting Malayalam |
-| **TTS (Text-to-Speech)** | IndicF5 Malayalam Adapter | High quality Indian speech synthesis |
-| **Backend & Sync** | FastAPI (Python 3.10+) | Asynchronous, typed API generation with Pydantic & SQLAlchemy |
+| **TTS (Text-to-Speech)** | IndicF5 Malayalam Adapter | High-quality Indian speech synthesis |
+| **Backend & Sync** | FastAPI (Python 3.10+) | Asynchronous, typed API generation with Pydantic & SQLAlchemy/MongoDB |
 | **OCR Ingestion** | PaddleOCR (with Tesseract fallback) | Layout-aware document & tabular parsing for paper registers |
-| **Portal Automation** | Playwright (Python) | Accessible locators (`getByRole`, `getByLabel`) for resilient automation |
+| **Gateway Automation** | Playwright (Python) | Accessible locators (`getByRole`, `getByLabel`) for resilient automation |
 
 ---
 
-## 4. Unresolved Care Ledger
+## 4. Unresolved Care Ledger & Malnutrition Memory
 The Unresolved Care Ledger is the persistent household-level memory entity that prevents duplicate alerts and connects multiple health programmes:
 - Maternal / Antenatal Care (ANC)
 - Child Immunisation (MCP card follow-ups)
-- Nutrition & Dietary Diversity
+- Malnutrition & Growth Monitoring (MUAC, Dietary Diversity)
 - Non-Communicable Diseases (NCDs / Hypertension / Diabetes)
 - Mental Health Screening
 

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Submission Confirmed - Health Department Central Gateway</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #F8FAFC; margin: 0; padding: 32px 16px; color: #1E293B; }
+    .container { max-width: 680px; margin: 0 auto; background: #FFFFFF; border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); padding: 36px; border-top: 6px solid #059669; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .badge-icon { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #DCFCE7; color: #16A34A; font-size: 32px; border-radius: 50%; margin-bottom: 12px; }
+    h1 { font-size: 22px; color: #065F46; margin: 0 0 6px 0; }
+    p.sub { font-size: 14px; color: #64748B; margin: 0; }
+    .ack-box { background: #F0FDF4; border: 1.5px dashed #86EFAC; border-radius: 8px; padding: 18px; margin: 24px 0; text-align: center; }
+    .ack-label { font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .ack-code { font-size: 22px; font-family: monospace; font-weight: 700; color: #15803D; letter-spacing: 0.08em; }
+    .details-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+    .details-table td { padding: 10px 12px; border-bottom: 1px solid #E2E8F0; }
+    .details-table td.label { font-weight: 600; color: #475569; width: 42%; }
+    .details-table td.val { color: #0F172A; font-weight: 500; }
+    .footer-action { margin-top: 28px; text-align: center; }
+    .btn-return { display: inline-block; background: #065F46; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; }
+    .stamp { display: inline-block; border: 2px solid #059669; color: #059669; font-weight: 800; font-size: 12px; padding: 4px 10px; text-transform: uppercase; border-radius: 4px; transform: rotate(-2deg); margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge-icon">✓</div>
+      <h1>Survey & Encounter Filed Successfully</h1>
+      <p class="sub">Health Department Central Gateway • Swaram ASHA Platform Integration</p>
+      <div class="stamp">Verified Human-Confirmed Encounter</div>
+    </div>
+
+    <div class="ack-box">
+      <div class="ack-label">Central Health Portal Acknowledgement Number</div>
+      <div id="ackNumber" class="ack-code">{{ submission.ack_id }}</div>
+    </div>
+
+    <table class="details-table">
+      <tr>
+        <td class="label">Beneficiary Name</td>
+        <td id="recBeneficiaryName" class="val">{{ submission.beneficiary_name }}</td>
+      </tr>
+      {% if submission.gestational_weeks %}
+      <tr>
+        <td class="label">Gestational Age</td>
+        <td class="val">{{ submission.gestational_weeks }} Weeks</td>
+      </tr>
+      {% endif %}
+      {% if submission.systolic_bp %}
+      <tr>
+        <td class="label">Blood Pressure</td>
+        <td class="val">{{ submission.systolic_bp }} / {{ submission.diastolic_bp or '--' }} mmHg</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td class="label">IFA Tablets Distributed</td>
+        <td class="val">{{ submission.ifa_tablets }} Tablets</td>
+      </tr>
+      {% if submission.dietary_diversity %}
+      <tr>
+        <td class="label">Child Dietary Diversity</td>
+        <td class="val">{{ submission.dietary_diversity }}</td>
+      </tr>
+      {% endif %}
+      {% if submission.muac_reading %}
+      <tr>
+        <td class="label">MUAC Growth Reading</td>
+        <td class="val">{{ submission.muac_reading }}</td>
+      </tr>
+      {% endif %}
+      {% if submission.malnutrition_risk %}
+      <tr>
+        <td class="label">Malnutrition Risk Category</td>
+        <td class="val">{{ submission.malnutrition_risk }}</td>
+      </tr>
+      {% endif %}
+      {% if submission.follow_up_date %}
+      <tr>
+        <td class="label">Next Scheduled Visit</td>
+        <td class="val">{{ submission.follow_up_date }}</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td class="label">Submission Timestamp</td>
+        <td class="val">{{ submission.timestamp }}</td>
+      </tr>
+    </table>
+
+    <div class="footer-action">
+      <a href="/" class="btn-return">← Back to Reporting Portal</a>
+    </div>
+  </div>
+</body>
+</html>

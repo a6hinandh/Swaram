@@ -1,4 +1,5 @@
-# Module 1: ASHA Mobile Field App & Integration
+# Module 1: Swaram Mobile Application
+### Next-Generation ASHA Worker Platform (Client Experience)
 
 **Assigned Teammate:** Member 1 (Lead Developer / Mobile & System Integrator)  
 **Tech Stack:** React Native, Expo, TypeScript, Zustand, `expo-sqlite`
@@ -6,60 +7,35 @@
 ---
 
 ## 🎯 Purpose & Responsibilities
-This module owns everything the ASHA worker touches in the field:
-1. **Field Usability:** Voice-first, high contrast, minimal typing, minimal reading.
-2. **Audio Workflow:** Microphone capture -> trigger Module 2 ASR/Extraction -> preview extracted entities -> Human Confirmation Gate.
-3. **Offline Field Mode:** Local SQLite persistence for household encounters, automatic queuing, and idempotent server synchronisation.
-4. **Care Ledger UI:** Visualising cross-programme care gaps (Maternal, Child, NCD, Nutrition, Mental Health) and longitudinal narratives.
-5. **System Integration:** Connecting the interfaces from Module 2 (Voice), Module 3 (Backend/Sync), and Module 4 (Reporting).
+This module is the primary field interface for the ASHA worker:
+1. **Conversational Survey Workflow:** Replaces rigid, tiny-screen MCQ surveys with natural language Malayalam conversation. Zero typing, zero dropdown navigation.
+2. **Proactive Missing Field Inquiries:** When mandatory survey fields or clinical details are omitted, Swaram explicitly prompts the worker in natural language (*"Does the child consume milk and eggs daily?"*). The worker responds conversationally to complete the survey.
+3. **Swaram Survey Review Screen:** Transparent review card displaying all auto-filled fields across Demographics, Lifestyle NCD Screening, Malnutrition & Child Health, and Maternal Vitals.
+4. **Malnutrition & Growth Monitoring:** Real-time visibility into child dietary diversity, MUAC readings, and maternal nutritional anemia.
+5. **Longitudinal Care Ledger:** Persistent household memory tracking open care gaps and health history across visits.
+6. **Offline-First Resilience:** Instant local persistence with SQLite and an idempotent event queue for background synchronization.
 
 ---
 
-## 🚀 Quick Start for Member 1
+## 🚀 Quick Start
 
 ```bash
 cd module1-mobile
 npm install
 npm run web      # Run in browser for rapid UI testing
 # or
-npm run android  # Run in Android emulator or Expo Go / dev build
+npm run android  # Run in Android emulator or Expo dev build
 ```
 
 ---
 
-## 🔌 API Client & "Basic Call" Testing
-The file [`src/api/apiClient.ts`](./src/api/apiClient.ts) connects Module 1 to the backend:
+## 🔌 API Client Capabilities
+The client (`src/api/apiClient.ts`) handles:
 - `apiClient.checkBackendHealth()`: Pings `GET http://localhost:8000/health`.
-- `apiClient.getHouseholds()`: Fetches households for today's visits.
-- `apiClient.getCareLedger(householdId)`: Loads the household's unresolved care ledger.
-- `apiClient.processVoiceVisit(audioUri)`: Sends Malayalam audio to Module 2.
-- `apiClient.submitConfirmedVisit(visit)`: Posts confirmed clinical records.
+- `apiClient.getHouseholds()`: Fetches households with priority scores and malnutrition risk flags.
+- `apiClient.getCareLedger(householdId)`: Loads the household's longitudinal care ledger.
+- `apiClient.processVoiceVisit(audioUri)`: Sends audio to Module 2 for survey and clinical extraction.
+- `apiClient.resolveMissingField(draft, qId, answer)`: Resolves missing survey fields conversationally.
+- `apiClient.submitConfirmedVisit(visit)`: Posts human-confirmed surveys and updates the sync queue.
 
-*Note:* If the backend (Module 3) is not yet running, `apiClient` seamlessly falls back to offline contracts in [`src/data/mockData.ts`](./src/data/mockData.ts) so you can develop UI components without waiting on your teammates.
-
----
-
-## 📂 Directory Layout
-```
-module1-mobile/
-├── App.tsx             # Main ASHA field dashboard
-├── app.json            # Expo app configuration & permissions (AUDIO, CAMERA)
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── api/
-│   │   └── apiClient.ts # Live backend calls + mock fallback
-│   ├── data/
-│   │   └── mockData.ts  # Seed test data (Lakshmi household scenario)
-│   ├── types/
-│   │   └── index.ts     # Re-exports shared contracts from /contracts/types.ts
-│   └── components/      # (Add custom modular components here)
-└── README.md
-```
-
----
-
-## 🤝 Frozen Contracts Used
-- Inputs: `VisitDraft` (from Module 2), `HouseholdCareLedger` (from Module 3)
-- Outputs: `ConfirmedVisit` (sent to Module 3 & Module 4)
-- Specification: Refer to `../contracts/` for JSON schemas.
+If backends are offline, `apiClient` gracefully falls back to local contracts in `src/data/mockData.ts`.

@@ -28,7 +28,13 @@
         "form_id": { "type": "string", "format": "uuid" },
         "target_portal": {
           "type": "string",
-          "enum": ["mock_anmol_portal", "mock_rch_portal", "mock_ncd_portal"]
+          "enum": [
+            "swaram_health_portal",
+            "mock_shaili_portal",
+            "mock_anmol_portal",
+            "mock_rch_portal",
+            "mock_ncd_portal"
+          ]
         },
         "visit_ref_id": { "type": "string", "format": "uuid" },
         "mapped_fields": {

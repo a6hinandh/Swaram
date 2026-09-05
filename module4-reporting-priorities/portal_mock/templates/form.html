@@ -2,31 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Mock Government Health Portal (RCH / ANMOL Demonstration)</title>
+  <title>Health Department Central Reporting Portal (Swaram Gateway)</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #F8FAFC; margin: 0; padding: 24px; color: #1E293B; }
-    .container { max-width: 680px; margin: 0 auto; background: #FFFFFF; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px; border-top: 6px solid #1E3A8A; }
-    h1 { font-size: 20px; color: #1E3A8A; margin-bottom: 4px; }
+    .container { max-width: 720px; margin: 0 auto; background: #FFFFFF; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px; border-top: 6px solid #065F46; }
+    h1 { font-size: 22px; color: #065F46; margin-bottom: 4px; }
     p.sub { font-size: 13px; color: #64748B; margin-top: 0; margin-bottom: 24px; }
+    .section-divider { margin-top: 24px; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 2px solid #E2E8F0; font-size: 15px; font-weight: bold; color: #1E293B; }
     .form-group { margin-bottom: 16px; }
     label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #334155; }
     input[type="text"], input[type="number"], select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 14px; }
-    input:focus { outline: none; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
-    .alert-banner { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 13px; color: #1E40AF; }
-    .btn-submit { background: #1E3A8A; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
-    .btn-submit:hover { background: #1E40AF; }
+    input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.2); }
+    .alert-banner { background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 13px; color: #065F46; }
+    .btn-submit { background: #065F46; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-submit:hover { background: #047857; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>National Health Mission - Maternal & Child Health Form</h1>
-    <p class="sub">ASHA Field Visit Data Reporting Portal (Controlled Simulation)</p>
+    <h1>Health Department Central Reporting Portal</h1>
+    <p class="sub">Swaram Next-Gen ASHA Platform Integrated Gateway (Simulation Endpoint)</p>
 
     <div class="alert-banner">
-      <strong>Notice:</strong> This controlled mock endpoint verifies automated Playwright field population from confirmed Swaram visit data.
+      <strong>Swaram Live Gateway:</strong> Automated Playwright form filing from verified voice survey & clinical encounter records.
     </div>
 
     <form id="rchForm" method="POST" action="/submit-form">
+      <div class="section-divider">Section 1: Beneficiary & Household Details</div>
       <div class="form-group">
         <label for="beneficiaryName">Beneficiary Name</label>
         <input type="text" id="beneficiaryName" name="beneficiary_name" placeholder="Full Name" required>
@@ -37,6 +39,7 @@
         <input type="number" id="gestationalWeeks" name="gestational_weeks" min="1" max="42">
       </div>
 
+      <div class="section-divider">Section 2: Clinical Vitals & Lifestyle NCD Screening</div>
       <div class="form-group">
         <label for="systolicBP">Systolic Blood Pressure (mmHg)</label>
         <input type="number" id="systolicBP" name="systolic_bp" placeholder="e.g. 120">
@@ -57,6 +60,23 @@
         </select>
       </div>
 
+      <div class="section-divider">Section 3: Malnutrition & Early Childhood Growth Monitoring</div>
+      <div class="form-group">
+        <label for="dietaryDiversity">Child Dietary Diversity Score</label>
+        <input type="text" id="dietaryDiversity" name="dietary_diversity" placeholder="e.g. 4/8 food groups">
+      </div>
+
+      <div class="form-group">
+        <label for="muacReading">Mid-Upper Arm Circumference (MUAC)</label>
+        <input type="text" id="muacReading" name="muac_reading" placeholder="e.g. 12.8 cm">
+      </div>
+
+      <div class="form-group">
+        <label for="malnutritionRisk">Malnutrition Risk Category</label>
+        <input type="text" id="malnutritionRisk" name="malnutrition_risk" placeholder="e.g. Normal, Moderate, Severe">
+      </div>
+
+      <div class="section-divider">Section 4: Next Visit Planning</div>
       <div class="form-group">
         <label for="nextFollowUpDate">Next Scheduled Visit Date</label>
         <input type="text" id="nextFollowUpDate" name="follow_up_date" placeholder="YYYY-MM-DD">

@@ -19,7 +19,15 @@
     "person_id": { "type": "string", "format": "uuid" },
     "programme": {
       "type": "string",
-      "enum": ["maternal", "child_immunisation", "nutrition", "ncd", "mental_health"]
+      "enum": [
+        "maternal",
+        "child_immunisation",
+        "nutrition",
+        "malnutrition",
+        "ncd",
+        "mental_health",
+        "community_survey"
+      ]
     },
     "gap_type": { "type": "string" },
     "description": { "type": "string" },

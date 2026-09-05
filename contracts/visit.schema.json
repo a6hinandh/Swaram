@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "VisitContract",
-  "description": "Schemas for VisitDraft and ConfirmedVisit in Swaram",
+  "description": "Schemas for VisitDraft and ConfirmedVisit in Swaram Next-Generation ASHA Platform",
   "definitions": {
     "Vitals": {
       "type": "object",
@@ -14,14 +14,61 @@
       },
       "additionalProperties": false
     },
+    "MalnutritionAssessment": {
+      "type": "object",
+      "required": ["risk_level"],
+      "properties": {
+        "child_age_months": { "type": "integer", "minimum": 0, "maximum": 72 },
+        "muac_cm": { "type": "number", "minimum": 5.0, "maximum": 25.0 },
+        "wasting_status": { "type": "string", "enum": ["normal", "moderate_wasting", "severe_acute_malnutrition"] },
+        "stunting_status": { "type": "string", "enum": ["normal", "stunted", "severely_stunted"] },
+        "dietary_diversity_score": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "consumed_milk": { "type": "boolean" },
+        "consumed_eggs": { "type": "boolean" },
+        "consumed_pulses": { "type": "boolean" },
+        "edema_present": { "type": "boolean" },
+        "maternal_anemia_flag": { "type": "boolean" },
+        "risk_level": { "type": "string", "enum": ["normal", "moderate", "severe"] },
+        "clinical_notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "SwaramSurveyField": {
+      "type": "object",
+      "required": ["field_key", "section", "question_ml", "question_en", "value", "status"],
+      "properties": {
+        "field_key": { "type": "string" },
+        "section": { "type": "string", "enum": ["demographics", "ncd_lifestyle", "malnutrition", "maternal_child"] },
+        "question_ml": { "type": "string" },
+        "question_en": { "type": "string" },
+        "value": { "type": "string" },
+        "status": { "type": "string", "enum": ["extracted", "clarified_conversationally", "missing"] }
+      },
+      "additionalProperties": false
+    },
+    "MissingFieldPrompt": {
+      "type": "object",
+      "required": ["question_id", "field_target", "question_text_ml", "question_text_en"],
+      "properties": {
+        "question_id": { "type": "string" },
+        "field_target": { "type": "string" },
+        "question_text_ml": { "type": "string" },
+        "question_text_en": { "type": "string" },
+        "is_mandatory": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    },
     "PersonUpdate": {
       "type": "object",
       "required": ["person_id", "name"],
       "properties": {
         "person_id": { "type": "string", "format": "uuid" },
         "name": { "type": "string" },
+        "age": { "type": "integer" },
+        "gender": { "type": "string" },
         "pregnancy_weeks": { "type": "integer", "minimum": 1, "maximum": 45 },
         "vitals": { "$ref": "#/definitions/Vitals" },
+        "malnutrition": { "$ref": "#/definitions/MalnutritionAssessment" },
         "symptoms": { "type": "array", "items": { "type": "string" } },
         "medications_given": { "type": "array", "items": { "type": "string" } },
         "services_provided": { "type": "array", "items": { "type": "string" } },
@@ -58,7 +105,16 @@
           "type": "string",
           "enum": ["pending", "confirmed", "corrected"],
           "default": "pending"
-        }
+        },
+        "survey_fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/SwaramSurveyField" }
+        },
+        "missing_field_prompts": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/MissingFieldPrompt" }
+        },
+        "malnutrition_assessment": { "$ref": "#/definitions/MalnutritionAssessment" }
       }
     },
     "ConfirmedVisit": {
@@ -80,6 +136,11 @@
           "type": "array",
           "items": { "$ref": "#/definitions/PersonUpdate" }
         },
+        "survey_fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/SwaramSurveyField" }
+        },
+        "malnutrition_assessment": { "$ref": "#/definitions/MalnutritionAssessment" },
         "audio_record_ref": { "type": "string" },
         "confirmed_by_worker_at": { "type": "string", "format": "date-time" },
         "corrections_made": { "type": "array", "items": { "type": "string" } },

@@ -1,6 +1,6 @@
 /**
  * Swaram Shared TypeScript Contracts
- * Cross-module type definitions frozen across all four team members.
+ * The Next-Generation ASHA Worker Platform Core Contracts
  */
 
 export interface Vitals {
@@ -11,11 +11,50 @@ export interface Vitals {
   hemoglobin_g_dl?: number;
 }
 
+export type MalnutritionRiskLevel = 'normal' | 'moderate' | 'severe';
+
+export interface MalnutritionAssessment {
+  child_age_months?: number;
+  muac_cm?: number;
+  wasting_status?: 'normal' | 'moderate_wasting' | 'severe_acute_malnutrition';
+  stunting_status?: 'normal' | 'stunted' | 'severely_stunted';
+  dietary_diversity_score?: number; // e.g. 0 to 8 food groups
+  consumed_milk?: boolean;
+  consumed_eggs?: boolean;
+  consumed_pulses?: boolean;
+  edema_present?: boolean;
+  maternal_anemia_flag?: boolean;
+  risk_level: MalnutritionRiskLevel;
+  clinical_notes?: string;
+}
+
+export type SurveySection = 'demographics' | 'ncd_lifestyle' | 'malnutrition' | 'maternal_child';
+
+export interface SwaramSurveyField {
+  field_key: string;
+  section: SurveySection;
+  question_ml: string;
+  question_en: string;
+  value: string;
+  status: 'extracted' | 'clarified_conversationally' | 'missing';
+}
+
+export interface MissingFieldPrompt {
+  question_id: string;
+  field_target: string;
+  question_text_ml: string;
+  question_text_en: string;
+  is_mandatory: boolean;
+}
+
 export interface PersonUpdate {
   person_id: string;
   name: string;
+  age?: number;
+  gender?: string;
   pregnancy_weeks?: number;
   vitals?: Vitals;
+  malnutrition?: MalnutritionAssessment;
   symptoms?: string[];
   medications_given?: string[];
   services_provided?: string[];
@@ -33,6 +72,9 @@ export interface VisitDraft {
   confidence: number;
   validation_flags: string[];
   confirmation_status: 'pending' | 'confirmed' | 'corrected';
+  survey_fields?: SwaramSurveyField[];
+  missing_field_prompts?: MissingFieldPrompt[];
+  malnutrition_assessment?: MalnutritionAssessment;
 }
 
 export interface ConfirmedVisit {
@@ -41,6 +83,8 @@ export interface ConfirmedVisit {
   worker_id: string;
   timestamp: string;
   person_updates: PersonUpdate[];
+  survey_fields?: SwaramSurveyField[];
+  malnutrition_assessment?: MalnutritionAssessment;
   audio_record_ref?: string;
   confirmed_by_worker_at: string;
   corrections_made?: string[];
@@ -60,7 +104,14 @@ export interface QuestionPrompt {
   field_target?: string;
 }
 
-export type ProgrammeType = 'maternal' | 'child_immunisation' | 'nutrition' | 'ncd' | 'mental_health';
+export type ProgrammeType = 
+  | 'maternal' 
+  | 'child_immunisation' 
+  | 'nutrition' 
+  | 'malnutrition' 
+  | 'ncd' 
+  | 'mental_health' 
+  | 'community_survey';
 
 export type CareGapSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -101,6 +152,7 @@ export interface HouseholdCareLedger {
   priority_score: number;
   priority_reasons: string[];
   longitudinal_narrative: string;
+  malnutrition_trend?: string;
 }
 
 export interface ActionItem {
@@ -116,7 +168,7 @@ export interface ActionItem {
 
 export interface PreparedForm {
   form_id: string;
-  target_portal: 'mock_anmol_portal' | 'mock_rch_portal' | 'mock_ncd_portal';
+  target_portal: 'swaram_health_portal' | 'mock_shaili_portal' | 'mock_anmol_portal' | 'mock_rch_portal' | 'mock_ncd_portal';
   visit_ref_id?: string;
   mapped_fields: Record<string, string>;
   validation_passed: boolean;
