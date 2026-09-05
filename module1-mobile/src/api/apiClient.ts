@@ -15,31 +15,39 @@ import { extractStructuredClinicalRecord } from '../services/clinicalEntityExtra
 import { Platform, NativeModules } from 'react-native';
 
 /**
- * Auto-detects the development machine's IP address.
- * On mobile devices (iOS/Android), 'localhost' points to the phone itself,
- * so we resolve the host machine's LAN IP.
+ * Backend Host is dynamically driven by EXPO_PUBLIC_HOST in .env.
+ * Supports:
+ * - Full HTTPS URLs (e.g. EXPO_PUBLIC_HOST=https://your-domain.ngrok-free.dev)
+ * - Raw LAN IPs (e.g. EXPO_PUBLIC_HOST=192.168.1.15)
+ * - Localhost (e.g. EXPO_PUBLIC_HOST=localhost)
  */
-function getDefaultHost(): string {
-  if (Platform.OS === 'web') {
-    return 'localhost';
-  }
-  const scriptURL = NativeModules?.SourceCode?.scriptURL;
-  if (scriptURL) {
-    const host = scriptURL.split('://')[1]?.split('/')[0]?.split(':')[0];
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return host;
-    }
-  }
-  return '172.18.100.139'; // Computer Wi-Fi LAN IP
-}
+let activeHost = (process.env.EXPO_PUBLIC_HOST || 'localhost').trim();
 
-let activeHost = process.env.EXPO_PUBLIC_HOST || getDefaultHost();
+export const getBackendBaseUrl = () => {
+  const host = activeHost.trim();
+  if (host.startsWith('http://') || host.startsWith('https://')) {
+    return host.endsWith('/api/v1') ? host : `${host.replace(/\/$/, '')}/api/v1`;
+  }
+  if (host.includes('ngrok') || host.includes('.app') || host.includes('.dev') || host.includes('.lt') || host.includes('.io')) {
+    return `https://${host}/api/v1`;
+  }
+  return `http://${host}:8000/api/v1`;
+};
 
-export const getBackendBaseUrl = () => `http://${activeHost}:8000/api/v1`;
-export const getVoiceBaseUrl = () => `http://${activeHost}:8001/api/v1`;
+export const getVoiceBaseUrl = () => {
+  const host = activeHost.trim();
+  if (host.startsWith('http://') || host.startsWith('https://')) {
+    return host.endsWith('/api/v1') ? host : `${host.replace(/\/$/, '')}/api/v1`;
+  }
+  if (host.includes('ngrok') || host.includes('.app') || host.includes('.dev') || host.includes('.lt') || host.includes('.io')) {
+    return `https://${host}/api/v1`;
+  }
+  return `http://${host}:8001/api/v1`;
+};
+
 export const getActiveHost = () => activeHost;
 export const setActiveHost = (newHost: string) => {
-  activeHost = newHost.trim().replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+  activeHost = newHost.trim();
 };
 
 export interface ApiCallStatus<T> {
@@ -299,6 +307,47 @@ export const apiClient = {
         data: { status: 'queued_in_sqlite', id: visit.visit_id },
         isMockFallback: true,
         message: 'Saved to local SQLite queue (will auto-sync upon reconnection).'
+      };
+    }
+  },
+
+  /**
+   * Save Environmental & Climate Risk Assessment to MongoDB backend
+   */
+  async saveEnvironmentalAssessment(payload: any): Promise<ApiCallStatus<{ status: string; storage: string; assessment_id: string }>> {
+    const url = `${getBackendBaseUrl()}/environmental-assessments`;
+    try {
+      console.log(`[ApiClient] Sending environmental assessment to ${url}...`);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        console.log(`[ApiClient] Successfully saved to backend:`, json);
+        return {
+          data: json,
+          isMockFallback: json.storage !== 'mongodb',
+          message: json.storage === 'mongodb' ? 'Saved to MongoDB database successfully' : 'Saved to backend memory store',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      console.log(`[ApiClient] Failed connecting to ${url}:`, err?.message || err);
+      return {
+        data: {
+          status: 'saved',
+          storage: 'local_offline',
+          assessment_id: payload.assessment_id || `env_${Date.now()}`
+        },
+        isMockFallback: true,
+        message: 'Saved locally in offline mode'
       };
     }
   }

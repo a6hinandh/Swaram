@@ -6,7 +6,7 @@ Canonical persistence, offline sync queue, OCR digitization, and care ledger API
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import households, visits, sync, care_ledger, ocr, encounters
+from routers import households, visits, sync, care_ledger, ocr, encounters, environmental
 from db.database import db
 
 app = FastAPI(
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(households.router)
 app.include_router(visits.router)
 app.include_router(encounters.router)
+app.include_router(environmental.router)
 app.include_router(sync.router)
 app.include_router(care_ledger.router)
 app.include_router(ocr.router)
