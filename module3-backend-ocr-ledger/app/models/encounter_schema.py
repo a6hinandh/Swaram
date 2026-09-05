@@ -1,93 +1,127 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal, Dict, Any
 
+# 1. Visit Metadata
 class VisitMeta(BaseModel):
     visit_id: str
     household_id: str
     date: str  # YYYY-MM-DD
-    visit_type: Literal["routine", "follow_up", "referral"]
+    visit_type: Optional[Literal["routine", "follow_up", "referral"]] = None
+    source: Optional[Literal["voice", "manual", "mixed"]] = None
 
+# 2. Person Information
 class PersonInfo(BaseModel):
     person_id: str
-    name: str
-    age: float
-    sex: Literal["male", "female", "other", "unknown"]
-    relationship: str
-    life_stage: Literal["infant", "child", "adolescent", "adult", "elderly"]
-    pregnancy_status: Literal["pregnant", "postpartum", "not_pregnant", "unknown"]
+    name: Optional[str] = None
+    age: Optional[float] = None
+    sex: Optional[Literal["male", "female", "other", "unknown"]] = None
+    relationship_to_head: Optional[str] = None
+    life_stage: Optional[Literal["infant", "child", "adolescent", "adult", "elderly"]] = None
+    pregnancy_status: Optional[Literal["pregnant", "postpartum", "not_pregnant", "unknown"]] = None
 
-class Complaint(BaseModel):
+# 3. Observations Sub-documents
+class SymptomObservation(BaseModel):
     symptom: str
-    duration: str
-    severity: Literal["mild", "moderate", "severe", "unknown"]
-    trend: Literal["improving", "worsening", "unchanged", "unknown"]
+    duration: Optional[str] = None
+    severity: Optional[Literal["mild", "moderate", "severe", "unknown"]] = None
+    trend: Optional[Literal["improving", "worsening", "unchanged", "unknown"]] = None
 
-class Condition(BaseModel):
+class KnownCondition(BaseModel):
     condition: str
-    status: Literal["active", "resolved", "unknown"]
+    status: Optional[Literal["active", "resolved", "unknown"]] = None
 
-class Medication(BaseModel):
+class MedicationObservation(BaseModel):
     name: str
-    taking: Literal["yes", "no", "unknown"]
-    adherence: Literal["regular", "irregular", "stopped", "unknown"]
-    available: Literal["yes", "no", "unknown"]
+    taking: Optional[Literal["yes", "no", "unknown"]] = None
+    adherence: Optional[Literal["regular", "irregular", "stopped", "unknown"]] = None
+    available: Optional[Literal["yes", "no", "unknown"]] = None
 
-class HealthStatus(BaseModel):
-    complaints: List[Complaint] = Field(default_factory=list)
-    known_conditions: List[Condition] = Field(default_factory=list)
-    medications: List[Medication] = Field(default_factory=list)
+class BloodPressure(BaseModel):
+    systolic_mmhg: Optional[float] = None
+    diastolic_mmhg: Optional[float] = None
 
-class Measurements(BaseModel):
+class BloodGlucose(BaseModel):
+    value: Optional[float] = None
+    unit: Optional[Literal["mg/dL", "mmol/L", "unknown"]] = None
+    measurement_type: Optional[Literal["fasting", "postprandial", "random", "unknown"]] = None
+
+class MeasurementsObservation(BaseModel):
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
-    blood_pressure: Optional[str] = None
+    blood_pressure: Optional[BloodPressure] = None
+    blood_glucose: Optional[BloodGlucose] = None
     temperature_c: Optional[float] = None
     pulse_bpm: Optional[float] = None
     spo2_percent: Optional[float] = None
     muac_cm: Optional[float] = None
 
-class Immunization(BaseModel):
-    status: Literal["up_to_date", "overdue", "partially_complete", "unknown"]
+class ImmunizationObservation(BaseModel):
+    status: Optional[Literal["up_to_date", "overdue", "partially_complete", "unknown"]] = None
     last_received: Optional[str] = None
     next_due: Optional[str] = None
 
-class Screening(BaseModel):
+class ScreeningItem(BaseModel):
     type: str
-    status: Literal["completed", "due", "overdue", "unknown"]
+    status: Optional[Literal["completed", "due", "overdue", "unknown"]] = None
     last_done: Optional[str] = None
-    result: Literal["normal", "abnormal", "unknown"]
+    result: Optional[Literal["normal", "abnormal", "unknown"]] = None
 
-class MaternalCare(BaseModel):
+class MaternalCareObservation(BaseModel):
     antenatal_visits: Optional[int] = None
-    supplements: Literal["taking", "not_taking", "unknown"]
-    required_followup: Literal["yes", "no", "unknown"]
+    supplements: Optional[Literal["taking", "not_taking", "unknown"]] = None
+    required_followup: Optional[Literal["yes", "no", "unknown"]] = None
 
-class PreventiveCare(BaseModel):
-    immunization: Optional[Immunization] = None
-    screenings: List[Screening] = Field(default_factory=list)
-    maternal_care: Optional[MaternalCare] = None
+class PreventiveCareObservation(BaseModel):
+    immunization: Optional[ImmunizationObservation] = None
+    screenings: Optional[List[ScreeningItem]] = None
+    maternal_care: Optional[MaternalCareObservation] = None
 
-class Nutrition(BaseModel):
-    appetite: Literal["normal", "reduced", "poor", "unknown"]
-    feeding_concern: Literal["yes", "no", "unknown"]
-    food_access_problem: Literal["yes", "no", "unknown"]
+class NutritionObservation(BaseModel):
+    appetite: Optional[Literal["normal", "reduced", "poor", "unknown"]] = None
+    feeding_concern: Optional[Literal["yes", "no", "unknown"]] = None
+    food_access_problem: Optional[Literal["yes", "no", "unknown"]] = None
     nutrition_observation: Optional[str] = None
 
-class MentalSocial(BaseModel):
-    mental_health_concern: Literal["yes", "no", "unknown"]
-    screening_status: Literal["not_done", "completed", "needs_followup"]
+class MentalSocialObservation(BaseModel):
+    mental_health_concern: Optional[Literal["yes", "no", "unknown"]] = None
+    screening_status: Optional[Literal["not_done", "completed", "needs_followup"]] = None
     social_concern: Optional[str] = None
-    barriers_to_care: List[str] = Field(default_factory=list)
+    barriers_to_care: Optional[List[Literal["cost", "transport", "availability", "awareness", "family_support", "fear", "time", "accessibility", "other"]]] = None
 
-class CareHistory(BaseModel):
-    recent_doctor_visit: Literal["yes", "no", "unknown"]
-    recent_hospital_visit: Literal["yes", "no", "unknown"]
-    referral_given: Literal["yes", "no", "unknown"]
-    referral_completed: Literal["yes", "no", "unknown"]
-    previous_followup_pending: Literal["yes", "no", "unknown"]
+class CareHistoryObservation(BaseModel):
+    recent_doctor_visit: Optional[Literal["yes", "no", "unknown"]] = None
+    recent_hospital_visit: Optional[Literal["yes", "no", "unknown"]] = None
+    referral_given: Optional[Literal["yes", "no", "unknown"]] = None
+    referral_completed: Optional[Literal["yes", "no", "unknown"]] = None
+    previous_followup_pending: Optional[Literal["yes", "no", "unknown"]] = None
 
-class CareGap(BaseModel):
-    gap_type: Literal["immunization", "nutrition", "maternal", "screening", "medication", "referral", "mental_health", "other"]
+class Observations(BaseModel):
+    symptoms: Optional[List[SymptomObservation]] = None
+    known_conditions: Optional[List[KnownCondition]] = None
+    medications: Optional[List[MedicationObservation]] = None
+    measurements: Optional[MeasurementsObservation] = None
+    preventive_care: Optional[PreventiveCareObservation] = None
+    nutrition: Optional[NutritionObservation] = None
+    mental_social: Optional[MentalSocialObservation] = None
+    care_history: Optional[CareHistoryObservation] = None
+    additional_observations: Optional[str] = None
+
+# 4. Follow Up Information
+class FollowUpInformation(BaseModel):
+    required: Optional[Literal["yes", "no", "unknown"]] = None
+    reason: Optional[str] = None
+    action: Optional[str] = None
+    due_date: Optional[str] = None
+
+# 5. AI Assessment Sub-documents
+class RiskFlag(BaseModel):
+    risk_type: str
+    description: str
+    severity: Literal["low", "medium", "high"]
+    evidence: List[str] = Field(default_factory=list)
+
+class CareGapItem(BaseModel):
+    gap_type: Literal["immunization", "nutrition", "maternal", "screening", "medication", "referral", "mental_health", "vitals", "other"]
     description: str
     evidence: List[str] = Field(default_factory=list)
     severity: Literal["low", "medium", "high"]
@@ -96,26 +130,33 @@ class CareGap(BaseModel):
     recommended_action: str
     due_date: Optional[str] = None
 
-class FollowUp(BaseModel):
-    required: Literal["yes", "no"]
-    reason: Optional[str] = None
-    action: Optional[str] = None
-    due_date: Optional[str] = None
-    status: Literal["pending", "completed", "cancelled"]
+class PriorityAssessment(BaseModel):
+    level: Optional[Literal["low", "medium", "high", "urgent"]] = None
+    score: Optional[float] = None
+    reasons: Optional[List[str]] = None
 
+class AiAssessment(BaseModel):
+    risk_flags: Optional[List[RiskFlag]] = None
+    care_gaps: Optional[List[CareGapItem]] = None
+    priority: Optional[PriorityAssessment] = None
+
+# 6. Extraction Metadata
 class ExtractionMeta(BaseModel):
-    overall_confidence: Literal["high", "medium", "low"]
-    fields_needing_confirmation: List[str] = Field(default_factory=list)
+    overall_confidence: Optional[Literal["high", "medium", "low"]] = None
+    fields_needing_confirmation: Optional[List[str]] = None
+    uncertain_statements: Optional[List[str]] = None
 
+# 7. Final Clinical Encounter Master Schema
 class ClinicalEncounterSchema(BaseModel):
+    id: Optional[str] = Field(default=None, alias="_id")
     visit: VisitMeta
     person: PersonInfo
-    health_status: HealthStatus
-    measurements: Measurements
-    preventive_care: PreventiveCare
-    nutrition: Nutrition
-    mental_social: MentalSocial
-    care_history: CareHistory
-    care_gaps: List[CareGap] = Field(default_factory=list)
-    follow_up: FollowUp
-    extraction: ExtractionMeta
+    observations: Optional[Observations] = None
+    follow_up_information: Optional[FollowUpInformation] = None
+    ai_assessment: Optional[AiAssessment] = None
+    extraction: Optional[ExtractionMeta] = None
+
+    class Config:
+        populate_by_name = True
+        extra = "allow"
+

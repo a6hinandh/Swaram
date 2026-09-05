@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
 from models.encounter_schema import ClinicalEncounterSchema
-from db.database import encounters_col
+import db.database as db_mod
 
 router = APIRouter(prefix="/api/v1/encounters", tags=["Clinical Encounters"])
 
@@ -14,12 +14,12 @@ def save_clinical_encounter(encounter: ClinicalEncounterSchema):
     Saves or updates a rich clinical encounter in MongoDB.
     Applies idempotency by visit_id.
     """
-    doc = encounter.dict()
+    doc = encounter.dict(by_alias=True)
     visit_id = encounter.visit.visit_id
 
-    if encounters_col is not None:
+    if db_mod.encounters_col is not None:
         try:
-            result = encounters_col.update_one(
+            result = db_mod.encounters_col.update_one(
                 {"visit.visit_id": visit_id},
                 {"$set": doc},
                 upsert=True
@@ -58,9 +58,9 @@ def list_encounters(
     if person_id:
         query["person.person_id"] = person_id
 
-    if encounters_col is not None:
+    if db_mod.encounters_col is not None:
         try:
-            cursor = encounters_col.find(query, {"_id": 0}).sort("visit.date", -1).limit(limit)
+            cursor = db_mod.encounters_col.find(query, {"_id": 0}).sort("visit.date", -1).limit(limit)
             return list(cursor)
         except Exception as e:
             print(f"[MongoDB Error] {e}")
@@ -77,9 +77,9 @@ def list_encounters(
 @router.get("/{visit_id}", response_model=Dict[str, Any])
 def get_encounter_by_id(visit_id: str):
     """Retrieves a single clinical encounter document by visit_id."""
-    if encounters_col is not None:
+    if db_mod.encounters_col is not None:
         try:
-            doc = encounters_col.find_one({"visit.visit_id": visit_id}, {"_id": 0})
+            doc = db_mod.encounters_col.find_one({"visit.visit_id": visit_id}, {"_id": 0})
             if doc:
                 return doc
         except Exception as e:
@@ -93,9 +93,9 @@ def get_encounter_by_id(visit_id: str):
 @router.get("/household/{household_id}", response_model=List[Dict[str, Any]])
 def get_household_encounters(household_id: str):
     """Retrieves all clinical visits for a given household."""
-    if encounters_col is not None:
+    if db_mod.encounters_col is not None:
         try:
-            cursor = encounters_col.find({"visit.household_id": household_id}, {"_id": 0}).sort("visit.date", -1)
+            cursor = db_mod.encounters_col.find({"visit.household_id": household_id}, {"_id": 0}).sort("visit.date", -1)
             return list(cursor)
         except Exception as e:
             print(f"[MongoDB Error] {e}")
@@ -108,9 +108,9 @@ def get_household_encounters(household_id: str):
 @router.get("/person/{person_id}", response_model=List[Dict[str, Any]])
 def get_person_longitudinal_record(person_id: str):
     """Retrieves a person's complete longitudinal clinical timeline."""
-    if encounters_col is not None:
+    if db_mod.encounters_col is not None:
         try:
-            cursor = encounters_col.find({"person.person_id": person_id}, {"_id": 0}).sort("visit.date", -1)
+            cursor = db_mod.encounters_col.find({"person.person_id": person_id}, {"_id": 0}).sort("visit.date", -1)
             return list(cursor)
         except Exception as e:
             print(f"[MongoDB Error] {e}")

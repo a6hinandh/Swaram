@@ -6,9 +6,25 @@
  */
 
 import { RecordedAudio } from './audioRecorder';
-import { correctMalayalamSpelling } from './malayalamSpellCorrector';
+import {
+  enforceEnglishOrMalayalam,
+  LanguageMode,
+} from './malayalamSpellCorrector';
+import {
+  transcribeWithSarvamAI,
+  getCustomSarvamApiKey,
+  setCustomSarvamApiKey,
+  SarvamAsrResponse,
+} from './sarvamAsrService';
 
-export type LanguageMode = 'ml';
+export {
+  enforceEnglishOrMalayalam,
+  LanguageMode,
+  transcribeWithSarvamAI,
+  getCustomSarvamApiKey,
+  setCustomSarvamApiKey,
+  SarvamAsrResponse,
+};
 
 export interface IndicConformerResponse {
   transcript: string;
@@ -17,65 +33,6 @@ export interface IndicConformerResponse {
   message: string;
   detectedLanguage?: 'Malayalam';
   executionTimeMs: number;
-}
-
-/**
- * Strict Malayalam Language Enforcer:
- * Guarantees that transcription is exclusively MALAYALAM (മലയാളം).
- * - Native Malayalam text is preserved.
- * - Any other Indian script (Tamil, Hindi/Devanagari, Telugu, Kannada, Bengali, etc.)
- *   that ASR might mistakenly output is automatically converted to Malayalam script.
- * - Numbers and Latin clinical abbreviations (BP, mg, kg) are cleanly supported in context.
- * - Any foreign script characters (Cyrillic, Arabic, CJK, etc.) are stripped.
- */
-export function enforceEnglishOrMalayalam(text: string, mode: string = 'ml'): string {
-  if (!text || !text.trim()) return '';
-
-  const out: string[] = [];
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const code = text.charCodeAt(i);
-
-    // 1. ASCII / English / Numbers / Punctuation / Whitespace
-    if (code < 0x0080 || (code >= 0x2000 && code <= 0x206F)) {
-      out.push(ch);
-      continue;
-    }
-
-    // 2. Native Malayalam block (U+0D00 - U+0D7F)
-    if (code >= 0x0D00 && code <= 0x0D7F) {
-      out.push(ch);
-      continue;
-    }
-
-    // 3. Indic scripts: Devanagari (0x0900), Bengali (0x0980), Gurmukhi (0x0A00),
-    //    Gujarati (0x0A80), Oriya (0x0B00), Tamil (0x0B80), Telugu (0x0C00), Kannada (0x0C80)
-    //    All follow identical 128-byte Brahmic layout mapping directly to Malayalam (0x0D00).
-    if (code >= 0x0900 && code < 0x0D00) {
-      const blockOffset = code % 0x80;
-      const mlCode = 0x0D00 + blockOffset;
-      out.push(String.fromCharCode(mlCode));
-      continue;
-    }
-
-    // Omit any other foreign script characters (Chinese, Arabic, Cyrillic, etc.)
-  }
-
-  let res = out.join('');
-
-  // Anusvara cleanup: convert word-ending "മ്" into standard Malayalam anusvara "ം"
-  res = res
-    .replace(/മ് /g, 'ം ')
-    .replace(/മ്\n/g, 'ം\n')
-    .replace(/മ്\./g, 'ം.')
-    .replace(/മ്,/g, 'ം,');
-
-  if (res.endsWith('മ്')) {
-    res = res.slice(0, -2) + 'ം';
-  }
-
-  // 4. Apply comprehensive Malayalam spell & clinical terminology correction
-  return correctMalayalamSpelling(res);
 }
 
 // Backward compatibility alias
@@ -87,6 +44,21 @@ export async function transcribeWithIndicConformer(
 ): Promise<IndicConformerResponse> {
   const startTime = Date.now();
 
+  // 1. PRIMARY ENGINE: Sarvam AI Speech-to-Text (Saaras v4)
+  const sarvamKey = getCustomSarvamApiKey();
+  if (sarvamKey) {
+    try {
+      console.log('[ASR Service] Using Sarvam AI Saaras v4 engine for Malayalam transcription...');
+      const sarvamRes = await transcribeWithSarvamAI(audio, langMode);
+      if (sarvamRes.transcript) {
+        return sarvamRes;
+      }
+    } catch (sarvamErr: any) {
+      console.warn('[ASR Service] Sarvam AI attempt returned error, evaluating fallback:', sarvamErr.message);
+    }
+  }
+
+  // 2. Secondary Fallback: Hugging Face Serverless Inference API
   const hfToken =
     process.env.EXPO_PUBLIC_HF_TOKEN ||
     (process.env.EXPO_PUBLIC_AI4BHARAT_API_KEY?.startsWith('hf_') ? process.env.EXPO_PUBLIC_AI4BHARAT_API_KEY : '') ||
@@ -95,10 +67,9 @@ export async function transcribeWithIndicConformer(
     process.env.EXPO_PUBLIC_HF_ENDPOINT ||
     'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo';
 
-  // 1. Primary: Hugging Face Serverless Inference API
   if (hfToken && hfToken.startsWith('hf_')) {
     try {
-      console.log(`[Hugging Face ASR] Sending audio to ${hfEndpoint} (Language: MALAYALAM)...`);
+      console.log(`[Hugging Face ASR Fallback] Sending audio to ${hfEndpoint} (Language: MALAYALAM)...`);
 
       let bodyData: any = null;
       let contentType = 'audio/wav';
@@ -143,7 +114,6 @@ export async function transcribeWithIndicConformer(
           if (extractedText) {
             const executionTimeMs = Date.now() - startTime;
 
-            // PRINT TRANSCRIPTION
             console.log('\n======================================================');
             console.log('🗣️ HUGGING FACE INFERENCE TRANSCRIPTION (MALAYALAM):');
             console.log(extractedText);
@@ -154,7 +124,7 @@ export async function transcribeWithIndicConformer(
               confidence: 0.98,
               isMock: false,
               detectedLanguage: 'Malayalam',
-              message: 'Transcribed to Malayalam via Hugging Face Whisper.',
+              message: 'Transcribed to Malayalam via Hugging Face Whisper (Fallback).',
               executionTimeMs,
             };
           }
@@ -168,7 +138,7 @@ export async function transcribeWithIndicConformer(
     }
   }
 
-  // 2. AI4Bharat Dhruva Fallback (if configured)
+  // 3. Tertiary Fallback: AI4Bharat Dhruva
   const ai4bharatKey = process.env.EXPO_PUBLIC_AI4BHARAT_API_KEY || '';
   const ai4bharatEndpoint = process.env.EXPO_PUBLIC_INDIC_CONFORMER_ENDPOINT || '';
 
@@ -180,7 +150,7 @@ export async function transcribeWithIndicConformer(
   ) {
     try {
       const srcLang = 'ml';
-      console.log(`[AI4Bharat IndicConformer] Sending to ${ai4bharatEndpoint} (Lang: ${srcLang})...`);
+      console.log(`[AI4Bharat IndicConformer Fallback] Sending to ${ai4bharatEndpoint} (Lang: ${srcLang})...`);
       const payload = {
         pipelineTasks: [
           {
@@ -235,11 +205,12 @@ export async function transcribeWithIndicConformer(
     }
   }
 
-  // 3. Real Error: No mock data!
+  // 4. Error if no engine succeeded
   const executionTimeMs = Date.now() - startTime;
   throw new Error(
-    hfToken
+    sarvamKey || hfToken
       ? 'ASR transcription service did not detect speech. Please speak clearly into microphone and try again.'
-      : 'Hugging Face ASR token is not configured. Please add EXPO_PUBLIC_HF_TOKEN to module1-mobile/.env.'
+      : 'Sarvam AI API key is not configured. Please add EXPO_PUBLIC_SARVAM_API_KEY to module1-mobile/.env.'
   );
 }
+

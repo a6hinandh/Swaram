@@ -218,3 +218,65 @@ export const QUICK_CORRECTION_SUGGESTIONS = [
   { label: 'സുഖം (Fine)', value: 'സുഖമാണ്' },
   { label: 'ചെക്കപ്പ് (Visit)', value: 'അടുത്ത ചെക്കപ്പ് അടുത്ത ആഴ്ച' },
 ];
+
+export type LanguageMode = 'ml';
+
+/**
+ * Strict Malayalam Language Enforcer:
+ * Guarantees that transcription is exclusively MALAYALAM (മലയാളം).
+ * - Native Malayalam text is preserved.
+ * - Any other Indian script (Tamil, Hindi/Devanagari, Telugu, Kannada, Bengali, etc.)
+ *   that ASR might mistakenly output is automatically converted to Malayalam script.
+ * - Numbers and Latin clinical abbreviations (BP, mg, kg) are cleanly supported in context.
+ * - Any foreign script characters (Cyrillic, Arabic, CJK, etc.) are stripped.
+ */
+export function enforceEnglishOrMalayalam(text: string, mode: string = 'ml'): string {
+  if (!text || !text.trim()) return '';
+
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const code = text.charCodeAt(i);
+
+    // 1. ASCII / English / Numbers / Punctuation / Whitespace
+    if (code < 0x0080 || (code >= 0x2000 && code <= 0x206F)) {
+      out.push(ch);
+      continue;
+    }
+
+    // 2. Native Malayalam block (U+0D00 - U+0D7F)
+    if (code >= 0x0D00 && code <= 0x0D7F) {
+      out.push(ch);
+      continue;
+    }
+
+    // 3. Indic scripts: Devanagari (0x0900), Bengali (0x0980), Gurmukhi (0x0A00),
+    //    Gujarati (0x0A80), Oriya (0x0B00), Tamil (0x0B80), Telugu (0x0C00), Kannada (0x0C80)
+    //    All follow identical 128-byte Brahmic layout mapping directly to Malayalam (0x0D00).
+    if (code >= 0x0900 && code < 0x0D00) {
+      const blockOffset = code % 0x80;
+      const mlCode = 0x0D00 + blockOffset;
+      out.push(String.fromCharCode(mlCode));
+      continue;
+    }
+
+    // Omit any other foreign script characters (Chinese, Arabic, Cyrillic, etc.)
+  }
+
+  let res = out.join('');
+
+  // Anusvara cleanup: convert word-ending "മ്" into standard Malayalam anusvara "ം"
+  res = res
+    .replace(/മ് /g, 'ം ')
+    .replace(/മ്\n/g, 'ം\n')
+    .replace(/മ്\./g, 'ം.')
+    .replace(/മ്,/g, 'ം,');
+
+  if (res.endsWith('മ്')) {
+    res = res.slice(0, -2) + 'ം';
+  }
+
+  // 4. Apply comprehensive Malayalam spell & clinical terminology correction
+  return correctMalayalamSpelling(res);
+}
+

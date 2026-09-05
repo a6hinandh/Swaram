@@ -16,10 +16,7 @@ def save_environmental_assessment(payload: Dict[str, Any]):
     """
     assessment_id = payload.get("assessment_id") or f"env_{int(datetime.datetime.now().timestamp() * 1000)}"
     payload["assessment_id"] = assessment_id
-    if "timestamp" not in payload:
-        payload["timestamp"] = datetime.datetime.utcnow().isoformat()
-
-    household_id = payload.get("household_id", "HH-DEFAULT")
+    household_id = payload.get("household_id")
 
     # 1. Save to MongoDB environmental_assessments collection
     if environmental_assessments_col is not None:

@@ -315,6 +315,17 @@ export function extractStructuredClinicalRecord(
         extractedBp = `${s}/${d}`;
       }
     }
+
+    // Match single systolic BP if only one value spoken: e.g. "BP 100", "ബിപി 100", "പ്രഷർ 120"
+    if (!extractedBp) {
+      const singleBpMatch = searchText.match(/(?:ബിപി|പ്രഷർ|bp|blood\s*pressure)[:\s]*\b(\d{2,3})\b/i);
+      if (singleBpMatch) {
+        const s = parseInt(singleBpMatch[1], 10);
+        if (s >= 60 && s <= 250) {
+          extractedBp = `${s}`;
+        }
+      }
+    }
   }
 
   if (extractedBp) {

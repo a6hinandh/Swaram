@@ -31,41 +31,50 @@ def record_confirmed_visit(visit: ConfirmedVisitSchema):
                     vitals_dict = person_up.vitals.dict() if person_up.vitals else {}
                     sys_bp = vitals_dict.get("systolic_bp")
                     dia_bp = vitals_dict.get("diastolic_bp")
-                    bp_str = f"{sys_bp}/{dia_bp}" if sys_bp and dia_bp else None
+
+                    measurements_doc = {}
+                    if sys_bp is not None or dia_bp is not None:
+                        measurements_doc["blood_pressure"] = {
+                            "systolic_mmhg": sys_bp,
+                            "diastolic_mmhg": dia_bp
+                        }
+                    if vitals_dict.get("weight_kg") is not None:
+                        measurements_doc["weight_kg"] = vitals_dict.get("weight_kg")
+                    if vitals_dict.get("pulse_bpm") is not None:
+                        measurements_doc["pulse_bpm"] = vitals_dict.get("pulse_bpm")
+                    if vitals_dict.get("temperature_c") is not None:
+                        measurements_doc["temperature_c"] = vitals_dict.get("temperature_c")
+
+                    symptoms_list = [{"symptom": s} for s in (person_up.symptoms or [])]
+                    medications_list = [{"name": m} for m in (person_up.medications_given or [])]
+
+                    observations_doc = {}
+                    if symptoms_list:
+                        observations_doc["symptoms"] = symptoms_list
+                    if medications_list:
+                        observations_doc["medications"] = medications_list
+                    if measurements_doc:
+                        observations_doc["measurements"] = measurements_doc
 
                     encounter_doc = {
                         "visit": {
                             "visit_id": f"{visit.visit_id}-{person_up.person_id}",
                             "household_id": visit.household_id,
                             "date": visit.timestamp[:10],
-                            "visit_type": "routine"
+                            "visit_type": "routine",
+                            "source": "manual"
                         },
                         "person": {
                             "person_id": person_up.person_id,
                             "name": person_up.name,
                             "age": person_up.age,
-                            "sex": person_up.gender.lower() if person_up.gender else "unknown",
-                            "relationship": "member",
-                            "life_stage": "child" if (person_up.age and person_up.age <= 5) else ("elderly" if (person_up.age and person_up.age >= 60) else "adult"),
-                            "pregnancy_status": "pregnant" if person_up.pregnancy_weeks else "not_pregnant"
-                        },
-                        "health_status": {
-                            "complaints": [{"symptom": s, "duration": "recent", "severity": "mild", "trend": "unchanged"} for s in (person_up.symptoms or [])],
-                            "known_conditions": [],
-                            "medications": [{"name": m, "taking": "yes", "adherence": "regular", "available": "yes"} for m in (person_up.medications_given or [])]
-                        },
-                        "measurements": {
-                            "blood_pressure": bp_str,
-                            "blood_pressure_sys": sys_bp,
-                            "blood_pressure_dia": dia_bp,
-                            "weight_kg": vitals_dict.get("weight_kg"),
-                            "pulse_bpm": vitals_dict.get("pulse_bpm")
-                        },
-                        "extraction": {
-                            "overall_confidence": "high",
-                            "fields_needing_confirmation": []
+                            "sex": person_up.gender.lower() if person_up.gender else None,
+                            "pregnancy_status": "pregnant" if person_up.pregnancy_weeks else None
                         }
                     }
+                    if observations_doc:
+                        encounter_doc["observations"] = observations_doc
+
                     encounters_col.update_one(
                         {"visit.visit_id": encounter_doc["visit"]["visit_id"]},
                         {"$set": encounter_doc},

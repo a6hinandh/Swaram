@@ -4,8 +4,8 @@ import {
   View,
   Text,
   TouchableOpacity,
-  SafeAreaView,
-  Platform
+  Platform,
+  SafeAreaView
 } from 'react-native';
 import { AppIcon, IconName } from './AppIcon';
 
