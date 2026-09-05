@@ -438,10 +438,10 @@ export default function App() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>സ്വരം • SWARAM</Text>
           <Text style={styles.headerSubtitle}>
-            {activeTab === 'core' && 'Next-Gen ASHA Worker Platform (വാർഡ് 4, ആലുവ)'}
+            {activeTab === 'core' && 'Next-Gen ASHA Worker Platform\n(വാർഡ് 4, ആലുവ)'}
             {activeTab === 'mental' && 'Mental Health Voice Screening Protocol'}
             {activeTab === 'climate' && 'Environmental & Climate Risk Monitoring'}
-            {activeTab === 'lifestyle' && 'CBAC / CABC Survey (Community Based Assessment Checklist)'}
+            {activeTab === 'lifestyle' && 'Community Based Assessment Checklist'}
             {activeTab === 'vitals' && 'Longitudinal Vitals Baseline & Delta Detector'}
           </Text>
           {activeTab === 'core' && (
@@ -449,11 +449,6 @@ export default function App() {
               <Text style={styles.conceptPillText}>Conversational Survey & Care Intelligence</Text>
             </View>
           )}
-        </View>
-        <View style={styles.syncBadge}>
-          <Text style={styles.syncBadgeText}>
-            {syncQueueCount > 0 ? `${syncQueueCount} Queued` : 'Synced'}
-          </Text>
         </View>
       </View>
 
@@ -630,9 +625,6 @@ export default function App() {
             <View style={{ flex: 1 }}>
               <View style={styles.cbacHeaderRow}>
                 <Text style={styles.cbacLauncherTitle}>CBAC / CABC സർവേ</Text>
-                <View style={styles.cbacTag}>
-                  <Text style={styles.cbacTagText}>MoHFW • NHM (30+)</Text>
-                </View>
               </View>
               <Text style={styles.cbacLauncherSubtitle}>
                 കമ്മ്യൂണിറ്റി ബേസ്ഡ് അസസ്സ്മെന്റ് ചെക്ക്‌ലിസ്റ്റ് (NCD & Cancer Early Screening)
@@ -670,8 +662,8 @@ export default function App() {
                 <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎙️'}</Text>
                 <Text style={styles.recordButtonText}>
                   {isRecording
-                    ? `🔴 ${Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:${(recordingDuration % 60).toString().padStart(2, '0')} - നിർത്തുക (Stop & Transcribe)`
-                    : 'ശബ്ദം രേഖപ്പെടുത്തുക (Record Live Audio)'}
+                    ? `🔴 ${Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:${(recordingDuration % 60).toString().padStart(2, '0')} - നിർത്തുക\n(Stop & Transcribe)`
+                    : 'ശബ്ദം രേഖപ്പെടുത്തുക\n(Record Live Audio)'}
                 </Text>
               </View>
             )}
@@ -1042,7 +1034,7 @@ export default function App() {
                 {isSavingRecord ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.saveRecordBtnText}>💾 സേവ് ചെയ്യുക (Save Record Offline)</Text>
+                  <Text style={styles.saveRecordBtnText}>💾 സേവ് ചെയ്യുക{"\n"}(Save Record Offline)</Text>
                 )}
               </TouchableOpacity>
 
@@ -1060,7 +1052,7 @@ export default function App() {
         <View style={styles.historyCard}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>
-              📁 സേവ് ചെയ്ത രേഖകൾ ({savedRecords.length} Saved Offline)
+              📁 സേവ് ചെയ്ത രേഖകൾ{"\n"}({savedRecords.length} Saved Offline)
             </Text>
             {savedRecords.length > 0 && (
               <TouchableOpacity style={styles.exportAllBtn} onPress={handleOpenBatchExportModal}>
@@ -1174,10 +1166,6 @@ export default function App() {
         )}
 
 
-        {/* Status Message Footer */}
-        <View style={styles.footerNote}>
-          <Text style={styles.footerText}>Status: {lastActionMessage}</Text>
-        </View>
       </ScrollView>
       )}
 

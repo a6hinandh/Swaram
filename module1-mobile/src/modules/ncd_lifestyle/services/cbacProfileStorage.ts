@@ -278,7 +278,6 @@ function initializeSeedProfiles() {
   };
 
   inMemoryProfiles.set(lakshmiId, lakshmiProfile);
-  inMemoryProfiles.set(chandranId, chandranProfile);
 }
 
 // Initialize seed data on load

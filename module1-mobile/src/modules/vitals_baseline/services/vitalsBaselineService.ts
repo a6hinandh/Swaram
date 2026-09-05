@@ -13,43 +13,6 @@ import { apiClient } from '../../../api/apiClient';
  */
 export const BENEFICIARY_PERSONAS: BeneficiaryPersona[] = [
   {
-    id: 'p-radhamani-01',
-    name: 'Radhamani P.',
-    age: 62,
-    gender: 'female',
-    category: 'Elderly / NCD',
-    description: 'Chronic hypertension & diabetes. Established 6-month baseline 120/80 mmHg.',
-    defaultBaseline: {
-      patientId: 'p-radhamani-01',
-      householdId: 'h-lakshmi-001',
-      personName: 'Radhamani P.',
-      age: 62,
-      gender: 'female',
-      baselineSystolicBp: 120,
-      baselineDiastolicBp: 80,
-      baselineGlucoseMgDl: 115,
-      baselinePulseBpm: 72,
-      baselineWeightKg: 56.5,
-      recordedVisitsCount: 6,
-      lastBaselineUpdateDate: '2026-07-30',
-      recentHistoryPoints: [
-        { date: '2026-03-12', systolic: 118, diastolic: 78, glucose: 110, weight: 56.2 },
-        { date: '2026-04-15', systolic: 120, diastolic: 80, glucose: 112, weight: 56.4 },
-        { date: '2026-05-20', systolic: 122, diastolic: 82, glucose: 118, weight: 56.5 },
-        { date: '2026-06-25', systolic: 119, diastolic: 79, glucose: 114, weight: 56.5 },
-        { date: '2026-07-30', systolic: 121, diastolic: 81, glucose: 116, weight: 56.6 }
-      ]
-    },
-    defaultCurrent: {
-      systolicBp: 148,
-      diastolicBp: 92,
-      glucoseMgDl: 185,
-      pulseBpm: 76,
-      weightKg: 56.8,
-      measuredAt: new Date().toISOString()
-    }
-  },
-  {
     id: 'p-rahul-02',
     name: 'Rahul',
     age: 1,

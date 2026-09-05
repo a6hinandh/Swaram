@@ -27,13 +27,13 @@ export const VitalsBaselineScreen: React.FC = () => {
   const [baseline, setBaseline] = useState<VitalsBaseline>(BENEFICIARY_PERSONAS[0].defaultBaseline);
   const [isLoadingBaseline, setIsLoadingBaseline] = useState<boolean>(false);
 
-  // Measurement states
-  const [systolic, setSystolic] = useState<number>(148);
-  const [diastolic, setDiastolic] = useState<number>(92);
-  const [glucose, setGlucose] = useState<number>(185);
-  const [weight, setWeight] = useState<number>(56.8);
-  const [muac, setMuac] = useState<number>(12.6);
-  const [pulse, setPulse] = useState<number>(76);
+  // Measurement states (Initialized to null - Hyphen display until real values received)
+  const [systolic, setSystolic] = useState<number | null>(null);
+  const [diastolic, setDiastolic] = useState<number | null>(null);
+  const [glucose, setGlucose] = useState<number | null>(null);
+  const [weight, setWeight] = useState<number | null>(null);
+  const [muac, setMuac] = useState<number | null>(null);
+  const [pulse, setPulse] = useState<number | null>(null);
 
   // Status & Feedback states
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -46,13 +46,13 @@ export const VitalsBaselineScreen: React.FC = () => {
     const persona = BENEFICIARY_PERSONAS.find((p) => p.id === personaId) || BENEFICIARY_PERSONAS[0];
     setActivePersona(persona);
 
-    // Initialize current measurements from persona defaults
-    setSystolic(persona.defaultCurrent.systolicBp || 120);
-    setDiastolic(persona.defaultCurrent.diastolicBp || 80);
-    setGlucose(persona.defaultCurrent.glucoseMgDl || 110);
-    setWeight(persona.defaultCurrent.weightKg || (persona.defaultBaseline.baselineWeightKg || 50));
-    setMuac(persona.defaultCurrent.muacCm || (persona.defaultBaseline.baselineMuacCm || 13.0));
-    setPulse(persona.defaultCurrent.pulseBpm || 74);
+    // Keep measurements as null until real values are extracted
+    setSystolic(null);
+    setDiastolic(null);
+    setGlucose(null);
+    setWeight(null);
+    setMuac(null);
+    setPulse(null);
 
     // Load baseline from MongoDB Atlas with fallback
     setIsLoadingBaseline(true);
@@ -72,12 +72,12 @@ export const VitalsBaselineScreen: React.FC = () => {
   }, []);
 
   const current: CurrentVitalsMeasurement = {
-    systolicBp: activePersona.category !== 'Child / Growth' ? systolic : undefined,
-    diastolicBp: activePersona.category !== 'Child / Growth' ? diastolic : undefined,
-    glucoseMgDl: activePersona.category === 'Elderly / NCD' ? glucose : undefined,
-    weightKg: weight,
-    muacCm: activePersona.category === 'Child / Growth' ? muac : undefined,
-    pulseBpm: pulse,
+    systolicBp: activePersona.category !== 'Child / Growth' && systolic !== null ? systolic : undefined,
+    diastolicBp: activePersona.category !== 'Child / Growth' && diastolic !== null ? diastolic : undefined,
+    glucoseMgDl: activePersona.category === 'Elderly / NCD' && glucose !== null ? glucose : undefined,
+    weightKg: weight !== null ? weight : undefined,
+    muacCm: activePersona.category === 'Child / Growth' && muac !== null ? muac : undefined,
+    pulseBpm: pulse !== null ? pulse : undefined,
     measuredAt: new Date().toISOString()
   };
 
@@ -150,29 +150,29 @@ export const VitalsBaselineScreen: React.FC = () => {
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Resting BP</Text>
                 <Text style={styles.statItemVal}>
-                  {baseline.baselineSystolicBp || 120}/{baseline.baselineDiastolicBp || 80} mmHg
+                  {baseline.baselineSystolicBp && baseline.baselineDiastolicBp ? `${baseline.baselineSystolicBp}/${baseline.baselineDiastolicBp}` : '-'} mmHg
                 </Text>
               </View>
             )}
             {activePersona.category === 'Elderly / NCD' && (
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Blood Glucose</Text>
-                <Text style={styles.statItemVal}>{baseline.baselineGlucoseMgDl || 115} mg/dL</Text>
+                <Text style={styles.statItemVal}>{baseline.baselineGlucoseMgDl ? `${baseline.baselineGlucoseMgDl}` : '-'} mg/dL</Text>
               </View>
             )}
             <View style={styles.statRow}>
               <Text style={styles.statItemLabel}>Weight</Text>
-              <Text style={styles.statItemVal}>{baseline.baselineWeightKg || 50.0} kg</Text>
+              <Text style={styles.statItemVal}>{baseline.baselineWeightKg ? `${baseline.baselineWeightKg}` : '-'} kg</Text>
             </View>
             {activePersona.category === 'Child / Growth' && (
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Baseline MUAC</Text>
-                <Text style={styles.statItemVal}>{baseline.baselineMuacCm || 13.1} cm</Text>
+                <Text style={styles.statItemVal}>{baseline.baselineMuacCm ? `${baseline.baselineMuacCm}` : '-'} cm</Text>
               </View>
             )}
             <View style={styles.statRow}>
               <Text style={styles.statItemLabel}>Pulse Rate</Text>
-              <Text style={styles.statItemVal}>{baseline.baselinePulseBpm || 72} bpm</Text>
+              <Text style={styles.statItemVal}>{baseline.baselinePulseBpm ? `${baseline.baselinePulseBpm}` : '-'} bpm</Text>
             </View>
           </View>
 
@@ -183,29 +183,29 @@ export const VitalsBaselineScreen: React.FC = () => {
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Measured BP</Text>
                 <Text style={[styles.statItemVal, { color: '#111827' }]}>
-                  {systolic}/{diastolic} mmHg
+                  {systolic !== null && diastolic !== null ? `${systolic}/${diastolic}` : '-'} mmHg
                 </Text>
               </View>
             )}
             {activePersona.category === 'Elderly / NCD' && (
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Blood Glucose</Text>
-                <Text style={[styles.statItemVal, { color: '#111827' }]}>{glucose} mg/dL</Text>
+                <Text style={[styles.statItemVal, { color: '#111827' }]}>{glucose !== null ? `${glucose}` : '-'} mg/dL</Text>
               </View>
             )}
             <View style={styles.statRow}>
               <Text style={styles.statItemLabel}>Measured Weight</Text>
-              <Text style={[styles.statItemVal, { color: '#111827' }]}>{weight} kg</Text>
+              <Text style={[styles.statItemVal, { color: '#111827' }]}>{weight !== null ? `${weight}` : '-'} kg</Text>
             </View>
             {activePersona.category === 'Child / Growth' && (
               <View style={styles.statRow}>
                 <Text style={styles.statItemLabel}>Measured MUAC</Text>
-                <Text style={[styles.statItemVal, { color: '#111827' }]}>{muac} cm</Text>
+                <Text style={[styles.statItemVal, { color: '#111827' }]}>{muac !== null ? `${muac}` : '-'} cm</Text>
               </View>
             )}
             <View style={styles.statRow}>
               <Text style={styles.statItemLabel}>Measured Pulse</Text>
-              <Text style={[styles.statItemVal, { color: '#111827' }]}>{pulse} bpm</Text>
+              <Text style={[styles.statItemVal, { color: '#111827' }]}>{pulse !== null ? `${pulse}` : '-'} bpm</Text>
             </View>
           </View>
         </View>
@@ -260,17 +260,17 @@ export const VitalsBaselineScreen: React.FC = () => {
             <View style={styles.stepperSection}>
               {/* Systolic Stepper */}
               <View style={styles.stepperRow}>
-                <Text style={styles.stepperLabel}>Systolic BP: {systolic} mmHg</Text>
+                <Text style={styles.stepperLabel}>Systolic BP: {systolic !== null ? systolic : '-'} mmHg</Text>
                 <View style={styles.stepperButtons}>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setSystolic((prev) => Math.max(80, prev - 10))}
+                    onPress={() => setSystolic((prev) => Math.max(80, (prev ?? 120) - 10))}
                   >
                     <Text style={styles.stepBtnText}>-10</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setSystolic((prev) => Math.min(220, prev + 10))}
+                    onPress={() => setSystolic((prev) => Math.min(220, (prev ?? 120) + 10))}
                   >
                     <Text style={styles.stepBtnText}>+10</Text>
                   </TouchableOpacity>
@@ -279,17 +279,17 @@ export const VitalsBaselineScreen: React.FC = () => {
 
               {/* Diastolic Stepper */}
               <View style={styles.stepperRow}>
-                <Text style={styles.stepperLabel}>Diastolic BP: {diastolic} mmHg</Text>
+                <Text style={styles.stepperLabel}>Diastolic BP: {diastolic !== null ? diastolic : '-'} mmHg</Text>
                 <View style={styles.stepperButtons}>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setDiastolic((prev) => Math.max(50, prev - 5))}
+                    onPress={() => setDiastolic((prev) => Math.max(50, (prev ?? 80) - 5))}
                   >
                     <Text style={styles.stepBtnText}>-5</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setDiastolic((prev) => Math.min(130, prev + 5))}
+                    onPress={() => setDiastolic((prev) => Math.min(130, (prev ?? 80) + 5))}
                   >
                     <Text style={styles.stepBtnText}>+5</Text>
                   </TouchableOpacity>
@@ -299,17 +299,17 @@ export const VitalsBaselineScreen: React.FC = () => {
               {/* Blood Sugar Stepper if NCD */}
               {activePersona.category === 'Elderly / NCD' && (
                 <View style={styles.stepperRow}>
-                  <Text style={styles.stepperLabel}>Blood Sugar: {glucose} mg/dL</Text>
+                  <Text style={styles.stepperLabel}>Blood Sugar: {glucose !== null ? glucose : '-'} mg/dL</Text>
                   <View style={styles.stepperButtons}>
                     <TouchableOpacity
                       style={styles.stepBtn}
-                      onPress={() => setGlucose((prev) => Math.max(70, prev - 15))}
+                      onPress={() => setGlucose((prev) => Math.max(70, (prev ?? 110) - 15))}
                     >
                       <Text style={styles.stepBtnText}>-15</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.stepBtn}
-                      onPress={() => setGlucose((prev) => Math.min(350, prev + 15))}
+                      onPress={() => setGlucose((prev) => Math.min(350, (prev ?? 110) + 15))}
                     >
                       <Text style={styles.stepBtnText}>+15</Text>
                     </TouchableOpacity>
@@ -321,17 +321,17 @@ export const VitalsBaselineScreen: React.FC = () => {
             <View style={styles.stepperSection}>
               {/* Pediatric Weight Stepper */}
               <View style={styles.stepperRow}>
-                <Text style={styles.stepperLabel}>Child Weight: {weight.toFixed(1)} kg</Text>
+                <Text style={styles.stepperLabel}>Child Weight: {weight !== null ? weight.toFixed(1) : '-'} kg</Text>
                 <View style={styles.stepperButtons}>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setWeight((prev) => Math.max(5.0, Math.round((prev - 0.2) * 10) / 10))}
+                    onPress={() => setWeight((prev) => Math.max(5.0, Math.round(((prev ?? 10.0) - 0.2) * 10) / 10))}
                   >
                     <Text style={styles.stepBtnText}>-0.2 kg</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setWeight((prev) => Math.min(18.0, Math.round((prev + 0.2) * 10) / 10))}
+                    onPress={() => setWeight((prev) => Math.min(18.0, Math.round(((prev ?? 10.0) + 0.2) * 10) / 10))}
                   >
                     <Text style={styles.stepBtnText}>+0.2 kg</Text>
                   </TouchableOpacity>
@@ -340,17 +340,17 @@ export const VitalsBaselineScreen: React.FC = () => {
 
               {/* Pediatric MUAC Stepper */}
               <View style={styles.stepperRow}>
-                <Text style={styles.stepperLabel}>Child MUAC: {muac.toFixed(1)} cm</Text>
+                <Text style={styles.stepperLabel}>Child MUAC: {muac !== null ? muac.toFixed(1) : '-'} cm</Text>
                 <View style={styles.stepperButtons}>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setMuac((prev) => Math.max(9.0, Math.round((prev - 0.2) * 10) / 10))}
+                    onPress={() => setMuac((prev) => Math.max(9.0, Math.round(((prev ?? 13.0) - 0.2) * 10) / 10))}
                   >
                     <Text style={styles.stepBtnText}>-0.2 cm</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.stepBtn}
-                    onPress={() => setMuac((prev) => Math.min(18.0, Math.round((prev + 0.2) * 10) / 10))}
+                    onPress={() => setMuac((prev) => Math.min(18.0, Math.round(((prev ?? 13.0) + 0.2) * 10) / 10))}
                   >
                     <Text style={styles.stepBtnText}>+0.2 cm</Text>
                   </TouchableOpacity>
@@ -448,24 +448,11 @@ export const VitalsBaselineScreen: React.FC = () => {
             <>
               <AppIcon name="check" size={18} color="#FFFFFF" />
               <Text style={styles.primaryButtonText}>
-                Log Deviation & Update MongoDB Care Ledger
+                Log Deviation
               </Text>
             </>
           )}
         </TouchableOpacity>
-
-        {/* Frontline Care Gap Clinical Guidance Note */}
-        <View style={styles.devNote}>
-          <View style={styles.devNoteHeader}>
-            <AppIcon name="info" size={16} color="#065F46" />
-            <Text style={styles.devNoteTitle}>Frontline Decision Intelligence Rule</Text>
-          </View>
-          <Text style={styles.devNoteBody}>
-            When an acute vitals spurt ($\Delta \ge 20$ mmHg) or pediatric growth faltering is committed,
-            Swaram automatically generates an active Care Gap in MongoDB, updates the household longitudinal narrative,
-            and escalates the household priority score to 90+ for immediate follow-up.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -758,8 +745,9 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700'
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center'
   },
   devNote: {
     backgroundColor: '#F0FDF4',

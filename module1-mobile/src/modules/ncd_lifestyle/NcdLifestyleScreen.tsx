@@ -45,7 +45,7 @@ interface NcdLifestyleScreenProps {
 type MainViewTab = 'voice_survey' | 'profiles_progress' | 'filter_scores';
 
 export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<MainViewTab>('voice_survey');
+  const [activeView, setActiveView] = useState<'survey' | 'profiles'>('survey');
 
   // Voice Interaction State
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -58,8 +58,8 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
   // Active Questionnaire Record State
   const [record, setRecord] = useState<CbacOfficialRecord>(createDefaultCbacRecord());
   const [showPartBExpanded, setShowPartBExpanded] = useState<boolean>(true);
-  const [showPartCExpanded, setShowPartCExpanded] = useState<boolean>(false);
-  const [showPartDExpanded, setShowPartDExpanded] = useState<boolean>(false);
+  const [showPartCExpanded, setShowPartCExpanded] = useState<boolean>(true);
+  const [showPartDExpanded, setShowPartDExpanded] = useState<boolean>(true);
 
   // Storage & Longitudinal Profile State
   const [profiles, setProfiles] = useState<BeneficiaryProfile[]>([]);
@@ -220,7 +220,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
     newRecord.generalInfo.villageWard = profile.villageWard || 'വാർഡ് 4 (ആലുവ)';
 
     refreshScores(newRecord);
-    setActiveTab('voice_survey');
+    setActiveView('survey');
     setVoiceStatusMsg(`പുതിയ സർവേ ആരംഭിച്ചു (${profile.name})`);
   };
 
@@ -240,58 +240,28 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header */}
-      <View style={styles.topHeader}>
-        {onBack && (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
-            <Text style={styles.backBtnText}>← തിരികെ (Back)</Text>
+      {/* Module White Header Block */}
+      <View style={styles.headerBlock}>
+        <Text style={styles.title}>CBAC / CABC സർവേ</Text>
+        <Text style={styles.subtitle}>
+          കമ്മ്യൂണിറ്റി ബേസ്ഡ് അസസ്സ്മെന്റ് ചെക്ക്‌ലിസ്റ്റ് (NCD & Cancer Early Screening)
+        </Text>
+        <View style={styles.headerButtonRow}>
+          <TouchableOpacity
+            style={styles.visitProfilesBtn}
+            onPress={() => setActiveView(activeView === 'survey' ? 'profiles' : 'survey')}
+          >
+            <Text style={styles.visitProfilesBtnText}>
+              {activeView === 'survey'
+                ? 'പ്രൊഫൈലുകൾ സന്ദർശിക്കുക (Visit Profiles)'
+                : '📋 സർവേ ഫോം (Survey Form)'}
+            </Text>
           </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.headerTitle}>CBAC / CABC സർവേ</Text>
-            <View style={styles.nhmBadge}>
-              <Text style={styles.nhmBadgeText}>MoHFW OFFICIAL</Text>
-            </View>
-          </View>
-          <Text style={styles.headerSubtitle}>
-            കമ്മ്യൂണിറ്റി ബേസ്ഡ് അസസ്സ്മെന്റ് ചെക്ക്‌ലിസ്റ്റ് & പ്രോഗ്രസ് ട്രാക്കർ
-          </Text>
         </View>
       </View>
 
-      {/* Main Navigation Segmented Tabs */}
-      <View style={styles.tabNavRow}>
-        <TouchableOpacity
-          style={[styles.tabNavBtn, activeTab === 'voice_survey' && styles.tabNavBtnActive]}
-          onPress={() => setActiveTab('voice_survey')}
-        >
-          <Text style={[styles.tabNavText, activeTab === 'voice_survey' && styles.tabNavTextActive]}>
-            🎙️ വോയ്‌സ് സർവേ (Form)
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabNavBtn, activeTab === 'profiles_progress' && styles.tabNavBtnActive]}
-          onPress={() => setActiveTab('profiles_progress')}
-        >
-          <Text style={[styles.tabNavText, activeTab === 'profiles_progress' && styles.tabNavTextActive]}>
-            👥 പ്രൊഫൈലുകൾ ({profiles.length})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabNavBtn, activeTab === 'filter_scores' && styles.tabNavBtnActive]}
-          onPress={() => setActiveTab('filter_scores')}
-        >
-          <Text style={[styles.tabNavText, activeTab === 'filter_scores' && styles.tabNavTextActive]}>
-            📊 സ്കോർ ഫിൽട്ടർ
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* VIEW 1: VOICE SURVEY & AUTO-FILLED FORM */}
-      {activeTab === 'voice_survey' && (
+      {activeView === 'survey' && (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Voice Recording Studio Card */}
           <View style={styles.voiceStudioCard}>
@@ -323,12 +293,12 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
               {isProcessingVoice ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 1 }}>
                   <Text style={{ fontSize: 20 }}>{isRecording ? '⏹' : '🎙️'}</Text>
                   <Text style={styles.voiceStudioBtnText}>
                     {isRecording
-                      ? 'നിർത്തുക (Stop & Auto-Fill Form)'
-                      : 'സംസാരിക്കാൻ ആരംഭിക്കുക (Record Speech)'}
+                      ? 'നിർത്തുക\n(Stop & Auto-Fill Form)'
+                      : 'സംസാരിക്കാൻ ആരംഭിക്കുക\n(Record Speech)'}
                   </Text>
                 </View>
               )}
@@ -377,21 +347,12 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
                 </Text>
                 <Text style={styles.meterScoreLabel}>Part A CBAC റിസ്ക് സ്കോർ</Text>
               </View>
-              <View style={styles.tierBadge}>
-                <Text style={styles.tierBadgeText}>
-                  {record.overallClassification === 'urgent_mo_referral'
-                    ? '🚨 അടിയന്തര റഫറൽ (Warning Signs)'
-                    : record.partA.isHighRisk
-                    ? '⚠️ ഉയർന്ന റിസ്ക് (Score > 4)'
-                    : '✓ സാധാരണ നില (Score ≤ 4)'}
-                </Text>
-              </View>
             </View>
             <Text style={styles.meterNoteMl}>{record.actionRecommendationsMl}</Text>
             <Text style={styles.meterNoteEn}>{record.actionRecommendationsEn}</Text>
           </View>
 
-          {/* --- GENERAL INFORMATION (Image 1) --- */}
+          {/* --- GENERAL INFORMATION --- */}
           <View style={styles.formCard}>
             <Text style={styles.cardHeading}>📋 ജനറൽ വിവരങ്ങൾ (General Information)</Text>
             <View style={styles.grid2}>
@@ -445,7 +406,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
             </View>
           </View>
 
-          {/* --- PERSONAL DETAILS (Image 1) --- */}
+          {/* --- PERSONAL DETAILS --- */}
           <View style={styles.formCard}>
             <Text style={styles.cardHeading}>👤 വ്യക്തിഗത വിവരങ്ങൾ (Personal Details)</Text>
             <View style={styles.grid3}>
@@ -526,14 +487,9 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
             </View>
           </View>
 
-          {/* --- PART A: RISK ASSESSMENT (Image 1) --- */}
+          {/* --- PART A: RISK ASSESSMENT --- */}
           <View style={styles.formCard}>
-            <View style={styles.cardHeaderWithBadge}>
-              <Text style={styles.cardHeading}>ഭാഗം A: റിസ്ക് അസസ്സ്മെന്റ് (Part A: Risk Assessment)</Text>
-              <View style={styles.scoreBadge}>
-                <Text style={styles.scoreBadgeText}>സ്കോർ: {record.partA.totalScore} / 10</Text>
-              </View>
-            </View>
+            <Text style={styles.cardHeading}>ഭാഗം A: റിസ്ക് അസസ്സ്മെന്റ് (Part A: Risk Assessment)</Text>
             <Text style={styles.subtextNotice}>
               സ്കോർ 4-ൽ കൂടുതലാണെങ്കിൽ വ്യക്തിക്ക് NCD മുൻഗണനാ പരിശോധന ഉറപ്പാക്കണം.
             </Text>
@@ -715,7 +671,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
             </View>
           </View>
 
-          {/* --- PART B: EARLY DETECTION SYMPTOMS (Image 2) --- */}
+          {/* --- PART B: EARLY DETECTION SYMPTOMS --- */}
           <View style={styles.formCard}>
             <TouchableOpacity
               style={styles.expandHeader}
@@ -830,67 +786,114 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
             )}
           </View>
 
-          {/* --- PART C: COPD RISK FACTORS (Image 3) --- */}
+          {/* --- PART C: COPD RISK FACTORS --- */}
           <View style={styles.formCard}>
             <TouchableOpacity
               style={styles.expandHeader}
               onPress={() => setShowPartCExpanded(!showPartCExpanded)}
+              activeOpacity={0.7}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardHeading}>ഭാഗം C: ശ്വാസകോശ രോഗസാധ്യത (Part C: COPD Risk)</Text>
-                <Text style={{ fontSize: 11, color: '#4B5563' }}>പാചക ഇന്ധനവും ജോലിസ്ഥലത്തെ പുകയും</Text>
+                <Text style={styles.cardHeading}>ഭാഗം C: ശ്വാസകോശ രോഗസാധ്യത (Part C: COPD Risk Factors)</Text>
+                <Text style={{ fontSize: 11, color: '#059669', fontWeight: 'bold' }}>
+                  {record.partC.cookingFuels.includes('firewood') ||
+                   record.partC.cookingFuels.includes('coal') ||
+                   record.partC.cookingFuels.includes('crop_residue') ||
+                   record.partC.cookingFuels.includes('cow_dung') ||
+                   record.partC.occupationalExposures.some((e) => e !== 'none')
+                    ? '⚠️ ശ്വാസകോശ രോഗസാധ്യത അടയാളപ്പെടുത്തിയിട്ടുണ്ട് (Risk Factors Present)'
+                    : '✓ സുരക്ഷിതമായ ഇന്ധനവും അന്തരീക്ഷവും (Normal / Clean Environment)'}
+                </Text>
               </View>
-              <Text style={{ fontSize: 16, color: '#4B5563' }}>{showPartCExpanded ? '▲' : '▼'}</Text>
+              <Text style={{ fontSize: 16, color: '#4B5563', marginLeft: 8 }}>
+                {showPartCExpanded ? '▲' : '▼'}
+              </Text>
             </TouchableOpacity>
 
             {showPartCExpanded && (
-              <View style={{ marginTop: 10 }}>
-                <Text style={styles.fieldLabel}>പാചകത്തിന് ഉപയോഗിക്കുന്ന ഇന്ധനം (Cooking Fuel):</Text>
-                <View style={styles.btnChoiceRow}>
-                  {[
-                    { id: 'firewood', label: 'വിറക് (Firewood)' },
-                    { id: 'lpg', label: 'LPG / ഗ്യാസ്' },
-                    { id: 'kerosene', label: 'മണ്ണെണ്ണ' },
-                    { id: 'coal', label: 'കൽക്കരി / മറ്റ്' }
-                  ].map((fuel) => {
-                    const active = record.partC.cookingFuels.includes(fuel.id as CbacCookingFuel);
-                    return (
-                      <TouchableOpacity
-                        key={fuel.id}
-                        style={[styles.choiceBtn, active && styles.choiceBtnActive]}
-                        onPress={() => {
-                          if (active) {
-                            record.partC.cookingFuels = record.partC.cookingFuels.filter((f) => f !== fuel.id);
+              <View style={{ marginTop: 12 }}>
+                {/* C1: Cooking Fuel */}
+                <Text style={styles.subCategoryHeading}>
+                  C1. പാചകത്തിന് ഉപയോഗിക്കുന്ന ഇന്ധനം (Type of Cooking Fuel):
+                </Text>
+                {[
+                  { id: 'firewood', ml: '🔥 വിറക് (Firewood / Biomass)' },
+                  { id: 'lpg', ml: '🔥 LPG / ഗ്യാസ് (LPG Cooking Gas)' },
+                  { id: 'kerosene', ml: '🛢️ മണ്ണെണ്ണ (Kerosene Stove)' },
+                  { id: 'coal', ml: '🪨 കൽക്കരി / മറ്റ് ഇന്ധനം (Coal / Charcoal)' },
+                  { id: 'crop_residue', ml: '🌾 കൃഷി അവശിഷ്ടങ്ങൾ (Crop Residue)' },
+                  { id: 'cow_dung', ml: '🐄 വരളി / ചാണകം (Cow Dung Cakes)' }
+                ].map((fuel) => {
+                  const val = record.partC.cookingFuels.includes(fuel.id as CbacCookingFuel);
+                  return (
+                    <TouchableOpacity
+                      key={fuel.id}
+                      style={[styles.symRow, val && styles.symRowActive]}
+                      onPress={() => {
+                        if (val) {
+                          record.partC.cookingFuels = record.partC.cookingFuels.filter((f) => f !== fuel.id);
+                        } else {
+                          record.partC.cookingFuels.push(fuel.id as CbacCookingFuel);
+                        }
+                        refreshScores(record);
+                      }}
+                    >
+                      <View style={[styles.symCheck, val && styles.symCheckActive]}>
+                        <Text style={styles.symCheckText}>{val ? '✓' : ''}</Text>
+                      </View>
+                      <Text style={[styles.symLabel, val && styles.symLabelActive]}>{fuel.ml}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* C2: Occupational Exposure */}
+                <Text style={[styles.subCategoryHeading, { marginTop: 14 }]}>
+                  C2. ജോലിസ്ഥലത്തെ പുകയും പൊടിയും (Occupational Exposure to Smoke/Dust):
+                </Text>
+                {[
+                  { id: 'industrial_smoke_dust', ml: '🏭 വ്യവസായ പുക / പൊടി (Industrial Smoke & Dust)' },
+                  { id: 'crop_burning', ml: '🌾 കൃഷിയിടങ്ങളിലെ പുക (Crop Residue Burning)' },
+                  { id: 'garbage_burning', ml: '🗑️ മാലിന്യ പുക (Garbage / Plastics Burning)' },
+                  { id: 'none', ml: '✅ പ്രകടമായ ജോലിസ്ഥല പുകയില്ല (No Exposure / Normal)' }
+                ].map((exp) => {
+                  const val = record.partC.occupationalExposures.includes(exp.id as CbacOccupationalExposure);
+                  return (
+                    <TouchableOpacity
+                      key={exp.id}
+                      style={[styles.symRow, val && styles.symRowActive]}
+                      onPress={() => {
+                        if (exp.id === 'none') {
+                          record.partC.occupationalExposures = ['none'];
+                        } else {
+                          record.partC.occupationalExposures = record.partC.occupationalExposures.filter((e) => e !== 'none');
+                          if (val) {
+                            record.partC.occupationalExposures = record.partC.occupationalExposures.filter((e) => e !== exp.id);
                           } else {
-                            record.partC.cookingFuels.push(fuel.id as CbacCookingFuel);
+                            record.partC.occupationalExposures.push(exp.id as CbacOccupationalExposure);
                           }
-                          setRecord({ ...record });
-                        }}
-                      >
-                        <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>
-                          {fuel.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                        }
+                        refreshScores(record);
+                      }}
+                    >
+                      <View style={[styles.symCheck, val && styles.symCheckActive]}>
+                        <Text style={styles.symCheckText}>{val ? '✓' : ''}</Text>
+                      </View>
+                      <Text style={[styles.symLabel, val && styles.symLabelActive]}>{exp.ml}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
           </View>
 
-          {/* --- PART D: PHQ-2 DEPRESSION (Image 4) --- */}
+          {/* --- PART D: PHQ-2 DEPRESSION --- */}
           <View style={styles.formCard}>
             <TouchableOpacity
               style={styles.expandHeader}
               onPress={() => setShowPartDExpanded(!showPartDExpanded)}
             >
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.cardHeading}>ഭാഗം D: PHQ-2 മാനസികാരോഗ്യം (Mental Health)</Text>
-                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: record.partD.totalScore > 3 ? '#DC2626' : '#065F46' }}>
-                    (സ്കോർ: {record.partD.totalScore}/6)
-                  </Text>
-                </View>
+                <Text style={styles.cardHeading}>ഭാഗം D: PHQ-2 മാനസികാരോഗ്യം</Text>
                 <Text style={{ fontSize: 11, color: '#4B5563' }}>കഴിഞ്ഞ 2 ആഴ്ചയിലെ മാനസികാവസ്ഥ</Text>
               </View>
               <Text style={{ fontSize: 16, color: '#4B5563' }}>{showPartDExpanded ? '▲' : '▼'}</Text>
@@ -987,39 +990,111 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
         </ScrollView>
       )}
 
-      {/* VIEW 2: BENEFICIARY PROFILES & LONGITUDINAL PROGRESS TRACKING */}
-      {activeTab === 'profiles_progress' && (
+      {/* VIEW 2: BENEFICIARY PROFILES, SEARCH, FILTERS & LONGITUDINAL PROGRESS TRACKING */}
+      {activeView === 'profiles' && (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.profilesHeaderRow}>
             <View>
-              <Text style={styles.viewHeading}>👥 വ്യക്തിഗത പ്രൊഫൈലുകളും പുരോഗതിയും</Text>
+              <Text style={styles.viewHeading}>👥 പ്രൊഫൈലുകൾ സന്ദർശിക്കുക (Profiles & Filters)</Text>
               <Text style={styles.viewSubHeading}>
-                ഓരോ വ്യക്തിയുടെയും മുൻകാല സർവേകളും സ്കോറിലെ മാറ്റങ്ങളും ട്രാക്ക് ചെയ്യുക.
+                വ്യക്തികളെ തിരയാനും റിസ്ക് സ്കോറുകൾ അനുസരിച്ച് ഫിൽട്ടർ ചെയ്യാനും മുൻകാല സർവേകൾ കാണാനും സാധിക്കും.
               </Text>
             </View>
           </View>
 
-          {/* Profiles Horizontal / List Selector */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.profilesScroll}>
-            {profiles.map((p) => {
-              const isSelected = selectedProfile?.beneficiaryId === p.beneficiaryId;
-              return (
-                <TouchableOpacity
-                  key={p.beneficiaryId}
-                  style={[styles.profileCardChip, isSelected && styles.profileCardChipActive]}
-                  onPress={() => setSelectedProfile(p)}
-                >
-                  <View style={styles.chipAvatar}>
-                    <Text style={{ fontSize: 16 }}>{p.sex === 'female' ? '👩' : '👨'}</Text>
-                  </View>
-                  <View>
-                    <Text style={[styles.chipName, isSelected && styles.chipNameActive]}>{p.name}</Text>
-                    <Text style={styles.chipScore}>സ്കോർ: {p.latestScore}/10 ({p.surveys.length} സർവേകൾ)</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+          {/* Search Bar */}
+          <View style={styles.searchBarBox}>
+            <Text style={{ fontSize: 16, marginRight: 6 }}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search by Name, Identifier, or Ward..."
+              placeholderTextColor="#9CA3AF"
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Text style={{ color: '#6B7280', fontSize: 14 }}>✕</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Filter Chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipScroll}>
+            {[
+              { id: 'all', label: `എല്ലാം (${profiles.length})` },
+              { id: 'high_risk', label: `🚨 ഉയർന്ന റിസ്ക് (>4)` },
+              { id: 'normal', label: `🟢 സാധാരണ നില (≤4)` },
+              { id: 'warning_signs', label: `⚠️ ലക്ഷണങ്ങൾ (Part B)` },
+              { id: 'phq2', label: `🧠 PHQ-2 (>3)` }
+            ].map((f) => (
+              <TouchableOpacity
+                key={f.id}
+                style={[styles.filterChip, scoreFilter === f.id && styles.filterChipActive]}
+                onPress={() => setScoreFilter(f.id as any)}
+              >
+                <Text style={[styles.filterChipText, scoreFilter === f.id && styles.filterChipTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
+
+          {/* Filtered Profiles List */}
+          <View style={{ marginTop: 4, marginBottom: 14 }}>
+            <Text style={styles.filteredCountText}>
+              കണ്ടെത്തിയ വ്യക്തികൾ: {filteredProfiles.length}
+            </Text>
+
+            {filteredProfiles.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyText}>ഈ ഫിൽട്ടറിൽ ഉൾപ്പെടുന്ന വ്യക്തികൾ ഇല്ല.</Text>
+              </View>
+            ) : (
+              filteredProfiles.map((p) => (
+                <View key={p.beneficiaryId} style={styles.filterResultCard}>
+                  <View style={styles.resultCardTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resultName}>{p.name}</Text>
+                      <Text style={styles.resultMeta}>
+                        {p.age}y • {p.sex.toUpperCase()} • {p.villageWard} • {p.surveys.length} visits
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.resultScoreBadge,
+                        p.latestScore > 4 ? styles.meterWarning : styles.meterSafe
+                      ]}
+                    >
+                      <Text style={styles.resultScoreText}>സ്കോർ: {p.latestScore}/10</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.resultNote}>
+                    {p.surveys[0]?.actionRecommendationsMl || 'No survey notes available'}
+                  </Text>
+
+                  <View style={styles.resultActions}>
+                    <TouchableOpacity
+                      style={styles.openProfileBtn}
+                      onPress={() => {
+                        setSelectedProfile(p);
+                      }}
+                    >
+                      <Text style={styles.openProfileBtnText}>📈 പ്രൊഫൈൽ & ചരിത്രം കാണുക</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.newVisitBtn}
+                      onPress={() => handleStartNewSurveyForBeneficiary(p)}
+                    >
+                      <Text style={styles.newVisitBtnText}>➕ New Survey</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
 
           {/* Selected Beneficiary Detail & Longitudinal Timeline */}
           {selectedProfile && (
@@ -1114,113 +1189,6 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
         </ScrollView>
       )}
 
-      {/* VIEW 3: SCORE CLASSIFICATION & FILTER SYSTEM */}
-      {activeTab === 'filter_scores' && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View>
-            <Text style={styles.viewHeading}>📊 സ്കോർ അടിസ്ഥാനമാക്കിയുള്ള ഫിൽട്ടറുകൾ</Text>
-            <Text style={styles.viewSubHeading}>
-              വ്യക്തികളെ അവരുടെ റിസ്ക് സ്കോർ അനുസരിച്ച് വേർതിരിച്ച് പരിശോധിക്കുക.
-            </Text>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchBarBox}>
-            <Text style={{ fontSize: 16, marginRight: 6 }}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search by Name, Identifier, or Ward..."
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Text style={{ color: '#6B7280', fontSize: 14 }}>✕</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {/* Filter Chips */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipScroll}>
-            {[
-              { id: 'all', label: `എല്ലാം (${profiles.length})` },
-              { id: 'high_risk', label: `🚨 ഉയർന്ന റിസ്ക് (>4)` },
-              { id: 'normal', label: `🟢 സാധാരണ നില (≤4)` },
-              { id: 'warning_signs', label: `⚠️ ലക്ഷണങ്ങൾ (Part B)` },
-              { id: 'phq2', label: `🧠 PHQ-2 (>3)` }
-            ].map((f) => (
-              <TouchableOpacity
-                key={f.id}
-                style={[styles.filterChip, scoreFilter === f.id && styles.filterChipActive]}
-                onPress={() => setScoreFilter(f.id as any)}
-              >
-                <Text style={[styles.filterChipText, scoreFilter === f.id && styles.filterChipTextActive]}>
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Filtered Profiles List */}
-          <View style={{ marginTop: 14 }}>
-            <Text style={styles.filteredCountText}>
-              കണ്ടെത്തിയ വ്യക്തികൾ: {filteredProfiles.length}
-            </Text>
-
-            {filteredProfiles.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>ഈ ഫിൽട്ടറിൽ ഉൾപ്പെടുന്ന വ്യക്തികൾ ഇല്ല.</Text>
-              </View>
-            ) : (
-              filteredProfiles.map((p) => (
-                <View key={p.beneficiaryId} style={styles.filterResultCard}>
-                  <View style={styles.resultCardTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.resultName}>{p.name}</Text>
-                      <Text style={styles.resultMeta}>
-                        {p.age}y • {p.sex.toUpperCase()} • {p.villageWard} • {p.surveys.length} visits
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.resultScoreBadge,
-                        p.latestScore > 4 ? styles.meterWarning : styles.meterSafe
-                      ]}
-                    >
-                      <Text style={styles.resultScoreText}>സ്കോർ: {p.latestScore}/10</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.resultNote}>
-                    {p.surveys[0]?.actionRecommendationsMl || 'No survey notes available'}
-                  </Text>
-
-                  <View style={styles.resultActions}>
-                    <TouchableOpacity
-                      style={styles.openProfileBtn}
-                      onPress={() => {
-                        setSelectedProfile(p);
-                        setActiveTab('profiles_progress');
-                      }}
-                    >
-                      <Text style={styles.openProfileBtnText}>📈 പ്രൊഫൈൽ & ചരിത്രം കാണുക</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.newVisitBtn}
-                      onPress={() => handleStartNewSurveyForBeneficiary(p)}
-                    >
-                      <Text style={styles.newVisitBtnText}>➕ New Survey</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        </ScrollView>
-      )}
-
       {/* JSON Schema Viewer Modal */}
       <Modal
         visible={showJsonModal}
@@ -1258,70 +1226,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F3F4F6'
   },
-  topHeader: {
-    backgroundColor: '#064E3B',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12
-  },
-  backBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6
-  },
-  backBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold'
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold'
-  },
-  nhmBadge: {
-    backgroundColor: '#047857',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  nhmBadgeText: {
-    color: '#E6FFFA',
-    fontSize: 9,
-    fontWeight: 'bold'
-  },
-  headerSubtitle: {
-    color: '#A7F3D0',
-    fontSize: 11,
-    marginTop: 2
-  },
-  tabNavRow: {
-    flexDirection: 'row',
+  headerBlock: {
     backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB'
   },
-  tabNavBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent'
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    letterSpacing: -0.3
   },
-  tabNavBtnActive: {
-    borderBottomColor: '#065F46'
-  },
-  tabNavText: {
-    fontSize: 12,
+  subtitle: {
+    fontSize: 11,
     color: '#6B7280',
-    fontWeight: '600'
+    marginTop: 2
   },
-  tabNavTextActive: {
-    color: '#065F46',
-    fontWeight: 'bold'
+  headerButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10
+  },
+  visitProfilesBtn: {
+    backgroundColor: '#065F46',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  visitProfilesBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+    textAlign: 'center'
   },
   scrollContent: {
     padding: 14,
@@ -1377,9 +1317,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    marginVertical: 6
+    marginVertical: 6,
+    minHeight: 50
   },
   voiceStudioBtnIdle: {
     backgroundColor: '#065F46'
@@ -1392,8 +1334,10 @@ const styles = StyleSheet.create({
   },
   voiceStudioBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold'
+    fontSize: 13,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    flexShrink: 1
   },
   voiceStatusText: {
     fontSize: 11,
@@ -1541,13 +1485,14 @@ const styles = StyleSheet.create({
     gap: 8
   },
   fieldCol: {
-    flex: 1
+    flex: 1,
+    justifyContent: 'flex-end'
   },
   fieldLabel: {
     fontSize: 11,
     fontWeight: '600',
     color: '#4B5563',
-    marginBottom: 3
+    marginBottom: 4
   },
   inputBox: {
     backgroundColor: '#F9FAFB',
@@ -1575,7 +1520,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    marginBottom: 6
   },
   choiceBtnActive: {
     backgroundColor: '#065F46',
