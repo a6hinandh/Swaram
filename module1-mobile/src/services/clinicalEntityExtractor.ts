@@ -646,8 +646,12 @@ export function extractStructuredClinicalRecord(
     }
   }
 
-  // --- 7. NUTRITION ---
-  if (record.person.life_stage === 'infant' || record.person.age === 0) {
+  // --- 7. NUTRITION & WHO Z-SCORE (Infant/Child Scoped ONLY) ---
+  const isInfant = (record.person.life_stage === 'infant' || record.person.life_stage === 'child') ||
+    (record.person.age !== null && record.person.age <= 5) ||
+    /(?:കുട്ടി|കുഞ്ഞ്|വാവ|വാവയ്ക്ക്|മകൻ|മകൾ|infant|child|baby|kid)/i.test(searchText);
+
+  if (isInfant) {
     if (/(?:മുലപ്പാൽ\s*മാത്രം|exclusive\s*breastfeeding)/i.test(rawText)) {
       record.nutrition.child_nutrition.breastfeeding = 'exclusive';
     } else if (/(?:മുലപ്പാൽ|breastfeeding)/i.test(rawText)) {
@@ -657,7 +661,77 @@ export function extractStructuredClinicalRecord(
     if (/(?:കുറുക്ക്|കുറുക്ക്\s*തുടങ്ങി|complementary\s*feeding|solids\s*started)/i.test(rawText)) {
       record.nutrition.child_nutrition.complementary_feeding = 'started';
     }
+
+    if (record.measurements.weight_kg !== null && record.person.pregnancy_status !== 'pregnant' && (record.person.age === null || record.person.age <= 5)) {
+      const childAgeMonths = record.person.age !== null ? Math.max(1, record.person.age * 12) : 18;
+      const wazRes = calculateWhoWazZScore(record.measurements.weight_kg, childAgeMonths);
+      record.nutrition.child_nutrition.sam_mam_risk = wazRes.category;
+      record.care_history.allergies.push(`WHO WAZ Z-Score: ${wazRes.zScore} (${wazRes.category.toUpperCase()})`);
+    }
   }
+
+function calculateWhoWazZScore(weightKg: number, ageMonths = 18): { zScore: number; category: 'normal' | 'mild' | 'mam' | 'sam' } {
+  const m = 10.9;
+  const l = -0.1235;
+  const s = 0.1121;
+  const z = (Math.pow(weightKg / m, l) - 1.0) / (l * s);
+  const zScore = parseFloat(z.toFixed(2));
+  let category: 'normal' | 'mild' | 'mam' | 'sam' = 'normal';
+  if (zScore >= -1.0) category = 'normal';
+  else if (zScore >= -2.0) category = 'mild';
+  else if (zScore >= -3.0) category = 'mam';
+  else category = 'sam';
+  return { zScore, category };
+}
+
+function normalizeMalayalamPhonetics(text: string): string {
+  if (!text) return '';
+  return text.toLowerCase()
+    .replace(/ധ/g, 'ദ')
+    .replace(/ഷ/g, 'ശ')
+    .replace(/ള/g, 'ല')
+    .replace(/ണ്ഠ/g, 'ന്ത')
+    .replace(/ന്റ/g, 'ന്ത')
+    .replace(/ന്ഥ/g, 'ന്ത');
+}
+
+function levDistance(s1: string, s2: string): number {
+  if (s1.length < s2.length) return levDistance(s2, s1);
+  if (s2.length === 0) return s1.length;
+  let previousRow = Array.from({ length: s2.length + 1 }, (_, i) => i);
+  for (let i = 0; i < s1.length; i++) {
+    const currentRow = [i + 1];
+    for (let j = 0; j < s2.length; j++) {
+      const insertions = previousRow[j + 1] + 1;
+      const deletions = currentRow[j] + 1;
+      const substitutions = previousRow[j] + (s1[i] !== s2[j] ? 1 : 0);
+      currentRow.push(Math.min(insertions, deletions, substitutions));
+    }
+    previousRow = currentRow;
+  }
+  return previousRow[previousRow.length - 1];
+}
+
+function fuzzyMatchStems(text: string, stems: string[], minSimilarity = 0.72): boolean {
+  const normText = normalizeMalayalamPhonetics(text);
+  const words = normText.match(/[\u0D00-\u0D7F\w]+/g) || [];
+
+  for (const stem of stems) {
+    const normStem = normalizeMalayalamPhonetics(stem);
+    if (normText.includes(normStem)) return true;
+    for (const w of words) {
+      if (w.length >= 3 && normStem.length >= 3) {
+        if (w.startsWith(normStem.slice(0, 3)) || normStem.startsWith(w.slice(0, 3))) {
+          const dist = levDistance(w, normStem);
+          const maxLen = Math.max(w.length, normStem.length);
+          const sim = 1.0 - (dist / maxLen);
+          if (sim >= minSimilarity) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
   // --- 8. MENTAL & SOCIAL ---
   if (/(?:പുകവലി|ബീഡി|സിഗരറ്റ്|മുറുക്ക്|smoking|tobacco)/i.test(rawText)) {
@@ -666,10 +740,65 @@ export function extractStructuredClinicalRecord(
   if (/(?:മദ്യപാനം|മദ്യം|alcohol|drinking)/i.test(rawText)) {
     record.mental_social.substance_use.alcohol = 'yes';
   }
-  if (/(?:വിഷാദം|depressed|sadness)/i.test(rawText)) {
-    record.mental_social.mood_affect = 'depressed';
-  } else if (/(?:ഉത്കണ്ഠ|anxious|anxiety)/i.test(rawText)) {
+
+  // Deterministic PHQ-4 Mental Health Scoring (Fuzzy Stem & Phonetic Matching for Fast Speech)
+  let anxietyQ1: number | null = null;
+  let anxietyQ2: number | null = null;
+  let depressionQ1: number | null = null;
+  let depressionQ2: number | null = null;
+
+  const isSevereIntensity = fuzzyMatchStems(searchText, ['മിക്ക ദിവസവും', 'കഠിന', 'വളരെ', 'nearly every day', 'severe']);
+
+  // Anxiety Q1: Nervousness / Restlessness
+  if (fuzzyMatchStems(searchText, ['ആകുല', 'പരിഭ്രമ', 'nervous', 'on edge', 'restless'])) {
+    anxietyQ1 = isSevereIntensity ? 3 : 2;
     record.mental_social.mood_affect = 'anxious';
+  }
+
+  // Anxiety Q2: Worry / Uncontrolled Concern
+  if (fuzzyMatchStems(searchText, ['ഉത്കണ്ഠ', 'ഉത്കന്ധ', 'ഉല്കണ്ഠ', 'നിയന്ത്രണ', 'നിയന്ത്രിക്കാ', 'worry', 'anxi'])) {
+    anxietyQ2 = isSevereIntensity ? 3 : 2;
+    record.mental_social.mood_affect = 'anxious';
+  }
+
+  // Depression Q1: Depression / Hopelessness / Sadness
+  if (fuzzyMatchStems(searchText, ['വിഷാദ', 'പ്രത്യാശയി', 'സങ്കട', 'depress', 'hopeless', 'down'])) {
+    depressionQ1 = isSevereIntensity ? 3 : 2;
+    record.mental_social.mood_affect = 'depressed';
+  }
+
+  // Depression Q2: Anhedonia / Interest Loss / Insomnia
+  if (fuzzyMatchStems(searchText, ['താല്പര്യ', 'സന്തോഷമി', 'ഉറക്കമി', 'no interest', 'no pleasure', 'insomnia'])) {
+    depressionQ2 = isSevereIntensity ? 3 : 2;
+    record.mental_social.mood_affect = 'depressed';
+  }
+
+  const hasAnxiety = anxietyQ1 !== null || anxietyQ2 !== null;
+  const hasDepression = depressionQ1 !== null || depressionQ2 !== null;
+
+  if (hasAnxiety || hasDepression) {
+    const anxScore = (anxietyQ1 || 0) + (anxietyQ2 || 0);
+    const depScore = (depressionQ1 || 0) + (depressionQ2 || 0);
+    const totalScore = anxScore + depScore;
+
+    let riskLevel: 'normal' | 'mild' | 'moderate' | 'severe' = 'normal';
+    if (totalScore >= 9) riskLevel = 'severe';
+    else if (totalScore >= 6) riskLevel = 'moderate';
+    else if (totalScore >= 3) riskLevel = 'mild';
+
+    record.mental_social.phq4_assessment = {
+      anxiety_score: hasAnxiety ? anxScore : null,
+      depression_score: hasDepression ? depScore : null,
+      total_score: totalScore,
+      risk_level: riskLevel,
+    };
+  } else {
+    record.mental_social.phq4_assessment = {
+      anxiety_score: null,
+      depression_score: null,
+      total_score: null,
+      risk_level: 'unknown',
+    };
   }
 
   // --- 9. FOLLOW-UP INTELLIGENCE ---

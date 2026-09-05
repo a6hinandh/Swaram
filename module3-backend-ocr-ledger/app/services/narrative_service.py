@@ -42,6 +42,21 @@ class NarrativeService:
             lines.append(" - Child Nutrition: Younger child Rahul (18m) monitored. Dietary diversity moderate (needs egg/milk diversity). MUAC 12.8 cm (Normal).")
             lines.append(" - Maternal Nutrition: Lakshmi Amma (32w pregnant) supplied with Iron-Folic Acid tablets.")
 
+        # Mental Health Screening Context
+        lines.append("Mental Health Screening:")
+        has_mh_narrative = False
+        if recent_visits:
+            for v in recent_visits[-2:]:
+                for update in v.get("person_updates", []):
+                    mh = update.get("mental_health")
+                    if mh and (mh.get("anxiety_score") is not None or mh.get("depression_score") is not None):
+                        anx_str = f"{mh.get('anxiety_score')}/6" if mh.get('anxiety_score') is not None else "-"
+                        dep_str = f"{mh.get('depression_score')}/6" if mh.get('depression_score') is not None else "-"
+                        lines.append(f" - {update.get('name')}: Anxiety Score (GAD-2): {anx_str}, Depression Score (PHQ-2): {dep_str} ({mh.get('risk_level', 'normal').title()} Risk).")
+                        has_mh_narrative = True
+        if not has_mh_narrative:
+            lines.append(" - Maternal Mental Health: Routine screening - Anxiety Score (GAD-2): -, Depression Score (PHQ-2): -.")
+
         # Open Care Gaps
         if open_gaps:
             lines.append("Open Care Ledger Items:")

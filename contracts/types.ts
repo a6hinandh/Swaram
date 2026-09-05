@@ -20,6 +20,11 @@ export interface MalnutritionAssessment {
   muac_cm?: number;
   wasting_status?: 'normal' | 'moderate_wasting' | 'severe_acute_malnutrition';
   stunting_status?: 'normal' | 'stunted' | 'severely_stunted';
+  waz_zscore?: number;
+  haz_zscore?: number;
+  growth_velocity_status?: 'normal' | 'faltering' | 'weight_loss' | 'unknown';
+  previous_weight_kg?: number;
+  weight_delta_kg?: number;
   dietary_diversity_score?: number; // e.g. 0 to 8 food groups
   consumed_milk?: boolean;
   consumed_eggs?: boolean;
@@ -49,6 +54,14 @@ export interface MissingFieldPrompt {
   is_mandatory: boolean;
 }
 
+export interface MentalHealthAssessment {
+  anxiety_score?: number; // 0 to 6 (GAD-2)
+  depression_score?: number; // 0 to 6 (PHQ-2)
+  total_score?: number; // 0 to 12 (PHQ-4)
+  risk_level?: 'normal' | 'mild' | 'moderate' | 'severe';
+  screening_status?: 'completed' | 'partial' | 'pending';
+}
+
 export interface PersonUpdate {
   person_id: string;
   name: string;
@@ -57,6 +70,7 @@ export interface PersonUpdate {
   pregnancy_weeks?: number;
   vitals?: Vitals;
   malnutrition?: MalnutritionAssessment;
+  mental_health?: MentalHealthAssessment;
   symptoms?: string[];
   medications_given?: string[];
   services_provided?: string[];

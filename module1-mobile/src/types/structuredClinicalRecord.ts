@@ -16,7 +16,7 @@ export type ImmunizationStatus = 'up_to_date' | 'pending' | 'overdue' | 'unknown
 export type MaternalSupplements = 'taking' | 'not_taking' | 'unknown';
 export type Breastfeeding = 'exclusive' | 'partial' | 'none' | 'unknown';
 export type FeedingStatus = 'started' | 'not_started' | 'unknown';
-export type MalnutritionRisk = 'normal' | 'mam' | 'sam' | 'unknown';
+export type MalnutritionRisk = 'normal' | 'mild' | 'mam' | 'sam' | 'unknown';
 export type MoodAffect = 'normal' | 'depressed' | 'anxious' | 'confused' | 'unknown';
 export type GapType = 'immunization' | 'screening' | 'medication' | 'maternal' | 'referral';
 export type GapSeverity = 'low' | 'medium' | 'high';
@@ -125,10 +125,18 @@ export interface SubstanceUseInfo {
   other: string;
 }
 
+export interface PHQ4Assessment {
+  anxiety_score: number | null; // GAD-2 (0 to 6)
+  depression_score: number | null; // PHQ-2 (0 to 6)
+  total_score: number | null; // PHQ-4 (0 to 12)
+  risk_level: 'normal' | 'mild' | 'moderate' | 'severe' | 'unknown';
+}
+
 export interface MentalSocialInfo {
   mood_affect: MoodAffect;
   substance_use: SubstanceUseInfo;
   social_risk_factors: string[];
+  phq4_assessment?: PHQ4Assessment;
 }
 
 export interface RecentHospitalizationItem {

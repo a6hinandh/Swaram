@@ -11,6 +11,45 @@ from typing import Dict, Any, List
 from extraction.validator import ClinicalValidator
 from conversational_closure.gap_closer import CareGapConversationalCloser
 
+def normalize_malayalam_phonetics(text: str) -> str:
+    if not text: return ""
+    res = text.lower()
+    res = res.replace("ധ", "ദ").replace("ഷ", "ശ").replace("ള", "ല")
+    res = res.replace("ണ്ഠ", "ന്ത").replace("ന്റ", "ന്ത").replace("ന്ഥ", "ന്ത")
+    return res
+
+def lev_distance(s1: str, s2: str) -> int:
+    if len(s1) < len(s2): return lev_distance(s2, s1)
+    if len(s2) == 0: return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+def fuzzy_match_stems(transcript: str, stems: List[str], min_similarity: float = 0.72) -> bool:
+    norm_transcript = normalize_malayalam_phonetics(transcript)
+    words = re.findall(r'[\u0D00-\u0D7F\w]+', norm_transcript)
+    
+    for stem in stems:
+        norm_stem = normalize_malayalam_phonetics(stem)
+        if norm_stem in norm_transcript:
+            return True
+        for w in words:
+            if len(w) >= 3 and len(norm_stem) >= 3:
+                if w.startswith(norm_stem[:3]) or norm_stem.startswith(w[:3]):
+                    dist = lev_distance(w, norm_stem)
+                    max_len = max(len(w), len(norm_stem))
+                    sim = 1.0 - (dist / max_len)
+                    if sim >= min_similarity:
+                        return True
+    return False
+
 class MalayalamClinicalExtractor:
     def extract_from_transcript(self, transcript: str, household_id: str = None) -> Dict[str, Any]:
         """
@@ -78,38 +117,104 @@ class MalayalamClinicalExtractor:
         if "അയൺ" in transcript or "iron" in transcript.lower():
             medications.append("Iron-Folic Acid Tablets (30 days)")
 
-        # 5. Malnutrition Indicators (Overlooked Health Challenge)
-        # Check for food diversity items: Milk, Eggs, Pulses
+        # 4b. Mental Health PHQ-4 Screening (Fuzzy Stem & Phonetic Matching for Fast Speech)
+        anx_q1 = None
+        anx_q2 = None
+        dep_q1 = None
+        dep_q2 = None
+
+        is_severe_intensity = fuzzy_match_stems(transcript, ["മിക്ക ദിവസവും", "കഠിന", "വളരെ", "nearly every day", "severe"])
+
+        # Anxiety Q1: Nervousness / Restlessness
+        if fuzzy_match_stems(transcript, ["ആകുല", "പരിഭ്രമ", "nervous", "on edge", "restless"]):
+            anx_q1 = 3 if is_severe_intensity else 2
+
+        # Anxiety Q2: Worry / Uncontrolled Concern
+        if fuzzy_match_stems(transcript, ["ഉത്കണ്ഠ", "ഉത്കന്ധ", "ഉല്കണ്ഠ", "നിയന്ത്രണ", "നിയന്ത്രിക്കാ", "worry", "anxi"]):
+            anx_q2 = 3 if is_severe_intensity else 2
+
+        # Depression Q1: Depression / Hopelessness / Sadness
+        if fuzzy_match_stems(transcript, ["വിഷാദ", "പ്രത്യാശയി", "സങ്കട", "depress", "hopeless", "down"]):
+            dep_q1 = 3 if is_severe_intensity else 2
+
+        # Depression Q2: Anhedonia / Interest Loss / Insomnia
+        if fuzzy_match_stems(transcript, ["താല്പര്യ", "സന്തോഷമി", "ഉറക്കമി", "no interest", "no pleasure", "insomnia"]):
+            dep_q2 = 3 if is_severe_intensity else 2
+
+        has_anx = anx_q1 is not None or anx_q2 is not None
+        has_dep = dep_q1 is not None or dep_q2 is not None
+
+        anx_score = ((anx_q1 or 0) + (anx_q2 or 0)) if has_anx else None
+        dep_score = ((dep_q1 or 0) + (dep_q2 or 0)) if has_dep else None
+        tot_score = (anx_score or 0) + (dep_score or 0) if (has_anx or has_dep) else None
+
+        mental_health_assessment = {
+            "anxiety_score": anx_score,
+            "depression_score": dep_score,
+            "total_score": tot_score,
+            "risk_level": "severe" if (tot_score and tot_score >= 9) else ("moderate" if (tot_score and tot_score >= 6) else ("mild" if (tot_score and tot_score >= 3) else "normal")),
+            "screening_status": "completed" if (has_anx or has_dep) else "pending"
+        }
+
+        # 5. Malnutrition & WHO Z-Score Growth Indicators (Infant/Child Scoped ONLY)
+        from extraction.who_zscore_engine import is_infant_profile, calculate_who_zscore, evaluate_growth_velocity
+
         consumed_milk = "പാൽ" in transcript or "പാല" in transcript or "milk" in transcript.lower()
         consumed_eggs = "മുട്ട" in transcript or "egg" in transcript.lower()
         consumed_pulses = "പയർ" in transcript or "പയറ" in transcript or "പരിപ്പ്" in transcript or "പരിപ്പ" in transcript or "dal" in transcript.lower()
 
-        # Check for MUAC (Mid-Upper Arm Circumference) e.g., "MUAC 12.2", "കൈവണ്ണം 12.0"
         muac_match = re.search(r'(?:muac|കൈവണ്ണം)\s*[:=]?\s*(\d{1,2}(?:\.\d+)?)', transcript, re.IGNORECASE)
         muac_val = float(muac_match.group(1)) if muac_match else None
 
-        # Calculate dietary diversity score (baseline 3, increments with observed nutrient groups)
         dietary_score = 3
         if consumed_milk: dietary_score += 1
         if consumed_eggs: dietary_score += 1
         if consumed_pulses: dietary_score += 1
 
-        # Malnutrition Risk Determination
-        if muac_val and muac_val < 11.5:
-            mal_risk = "severe"
-            wasting = "severe_acute_malnutrition"
-        elif (muac_val and muac_val < 12.5) or dietary_score < 4:
-            mal_risk = "moderate"
-            wasting = "moderate_wasting"
+        # Check infant guard condition (Strictly skip for adult profiles)
+        is_infant = is_infant_profile(
+            transcript=transcript,
+            age_years=person_age,
+            weight_kg=vitals.get("weight_kg"),
+            height_cm=vitals.get("height_cm")
+        )
+
+        waz_score_val = None
+        velocity_status = "normal"
+        if is_infant and vitals.get("weight_kg"):
+            child_months = (person_age * 12) if (person_age is not None and person_age <= 5) else 18
+            waz_score_val, z_cat = calculate_who_zscore(
+                weight_kg=vitals["weight_kg"],
+                age_months=child_months,
+                gender="male"
+            )
+            if z_cat == "sam":
+                mal_risk = "severe"
+                wasting = "severe_acute_malnutrition"
+            elif z_cat == "mam":
+                mal_risk = "moderate"
+                wasting = "moderate_wasting"
+            else:
+                mal_risk = "normal" if dietary_score >= 5 else "moderate"
+                wasting = "normal"
         else:
-            mal_risk = "normal" if dietary_score >= 5 else "moderate"
-            wasting = "normal"
+            if muac_val and muac_val < 11.5:
+                mal_risk = "severe"
+                wasting = "severe_acute_malnutrition"
+            elif (muac_val and muac_val < 12.5) or dietary_score < 4:
+                mal_risk = "moderate"
+                wasting = "moderate_wasting"
+            else:
+                mal_risk = "normal" if dietary_score >= 5 else "moderate"
+                wasting = "normal"
 
         malnutrition_assessment = {
-            "child_age_months": 18,
+            "child_age_months": 18 if is_infant else None,
             "muac_cm": muac_val,
             "wasting_status": wasting,
             "stunting_status": "normal",
+            "waz_zscore": waz_score_val if is_infant else None,
+            "growth_velocity_status": velocity_status if is_infant else None,
             "dietary_diversity_score": dietary_score if (consumed_milk or consumed_eggs or consumed_pulses) else None,
             "consumed_milk": consumed_milk,
             "consumed_eggs": consumed_eggs,
@@ -117,7 +222,7 @@ class MalayalamClinicalExtractor:
             "edema_present": False,
             "maternal_anemia_flag": True if "അയൺ" in transcript else False,
             "risk_level": mal_risk,
-            "clinical_notes": "Routine early childhood malnutrition screening"
+            "clinical_notes": "Routine early childhood malnutrition screening" if is_infant else "General nutrition check"
         }
 
         # 6. Deterministic Validation
@@ -180,9 +285,10 @@ class MalayalamClinicalExtractor:
             "name": person_name,
             "age": person_age,
             "gender": "Female",
-            "pregnancy_weeks": 32 if person_age < 50 and ("ഗർഭിണി" in transcript or "pregnant" in transcript.lower()) else None,
+            "pregnancy_weeks": 32 if (person_age is not None and person_age < 50 and ("ഗർഭിണി" in transcript or "pregnant" in transcript.lower())) else None,
             "vitals": vitals,
             "malnutrition": malnutrition_assessment,
+            "mental_health": mental_health_assessment,
             "symptoms": ["Mild fatigue"] if "ക്ഷീണം" in transcript else [],
             "medications_given": medications,
             "services_provided": ["Vitals check", "Health screening"],
