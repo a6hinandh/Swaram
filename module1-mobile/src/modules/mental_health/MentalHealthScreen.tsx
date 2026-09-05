@@ -12,12 +12,16 @@ import { PhqFrequencyScore } from './types';
 import { calculatePhq2Score } from './services/mentalHealthService';
 
 export const MentalHealthScreen: React.FC = () => {
-  const [q1Score, setQ1Score] = useState<PhqFrequencyScore>(0);
-  const [q2Score, setQ2Score] = useState<PhqFrequencyScore>(0);
-  const [isVoiceAnalysisActive, setIsVoiceAnalysisActive] = useState(false);
+  const [anxQ1Score, setAnxQ1Score] = useState<PhqFrequencyScore>(0);
+  const [anxQ2Score, setAnxQ2Score] = useState<PhqFrequencyScore>(0);
+  const [depQ1Score, setDepQ1Score] = useState<PhqFrequencyScore>(0);
+  const [depQ2Score, setDepQ2Score] = useState<PhqFrequencyScore>(0);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const { total, referralNeeded } = calculatePhq2Score(q1Score, q2Score);
+  const anxietyTotal = anxQ1Score + anxQ2Score;
+  const depressionTotal = depQ1Score + depQ2Score;
+  const phq4Total = anxietyTotal + depressionTotal;
+  const referralNeeded = anxietyTotal >= 3 || depressionTotal >= 3;
 
   const options: { label: string; value: PhqFrequencyScore }[] = [
     { label: '0 - Never', value: 0 },
@@ -37,81 +41,148 @@ export const MentalHealthScreen: React.FC = () => {
         {/* Module Header */}
         <View style={styles.headerBlock}>
           <Text style={styles.title}>Mental Health Voice Protocol</Text>
-          <Text style={styles.subtitle}>Frontline conversational distress and PHQ-2 screening</Text>
+          <Text style={styles.subtitle}>Frontline conversational distress, Anxiety (GAD-2) & Depression (PHQ-2) screening</Text>
         </View>
 
-        {/* Patient Context Banner */}
-        <View style={styles.patientCard}>
-          <View style={styles.patientInfo}>
-            <Text style={styles.patientName}>Lakshmi K. (Age 34)</Text>
-            <Text style={styles.patientMeta}>Household #104 - Aluva Ward 4</Text>
-          </View>
-          <View style={styles.patientTag}>
-            <Text style={styles.patientTagText}>Postpartum 8w</Text>
-          </View>
-        </View>
+        {/* --- ANXIETY SECTION (GAD-2) --- */}
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E40AF', marginBottom: 8 }}>
+            ‍🩺 1. ഉത്കണ്ഠാ നിർണ്ണയം (Anxiety Screening - GAD-2)
+          </Text>
 
-        {/* Question 1 */}
-        <View style={styles.card}>
-          <Text style={styles.questionNumber}>Question 1 of 2</Text>
-          <Text style={styles.questionText}>
-            Little interest or pleasure in doing things over past 2 weeks
-          </Text>
-          <Text style={styles.questionSubtext}>
-            കഴിഞ്ഞ രണ്ടാഴ്ചയായി കാര്യങ്ങൾ ചെയ്യുന്നതിൽ താല്പര്യക്കുറവ്
-          </Text>
-          <View style={styles.scoreRow}>
-            {options.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[
-                  styles.scoreButton,
-                  q1Score === opt.value && styles.scoreButtonActive
-                ]}
-                onPress={() => setQ1Score(opt.value)}
-              >
-                <Text
+          {/* Anxiety Question 1 */}
+          <View style={styles.card}>
+            <Text style={styles.questionNumber}>Question 1 of 4 (Anxiety)</Text>
+            <Text style={styles.questionText}>
+              Feeling nervous, anxious, or on edge over past 2 weeks
+            </Text>
+            <Text style={styles.questionSubtext}>
+              കഴിഞ്ഞ രണ്ടാഴ്ചയായി പരിഭ്രമമോ ഉത്കണ്ഠയോ അസ്വസ്ഥതയോ അനുഭവപ്പെടുക
+            </Text>
+            <View style={styles.scoreRow}>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
                   style={[
-                    styles.scoreButtonText,
-                    q1Score === opt.value && styles.scoreButtonTextActive
+                    styles.scoreButton,
+                    anxQ1Score === opt.value && styles.scoreButtonActive
                   ]}
+                  onPress={() => setAnxQ1Score(opt.value)}
                 >
-                  {opt.value}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.scoreButtonText,
+                      anxQ1Score === opt.value && styles.scoreButtonTextActive
+                    ]}
+                  >
+                    {opt.value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Anxiety Question 2 */}
+          <View style={styles.card}>
+            <Text style={styles.questionNumber}>Question 2 of 4 (Anxiety)</Text>
+            <Text style={styles.questionText}>
+              Not being able to stop or control worrying over past 2 weeks
+            </Text>
+            <Text style={styles.questionSubtext}>
+              ആകുലതകളും ഉത്കണ്ഠകളും നിയന്ത്രിക്കാൻ കഴിയാതെ വരിക
+            </Text>
+            <View style={styles.scoreRow}>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.scoreButton,
+                    anxQ2Score === opt.value && styles.scoreButtonActive
+                  ]}
+                  onPress={() => setAnxQ2Score(opt.value)}
+                >
+                  <Text
+                    style={[
+                      styles.scoreButtonText,
+                      anxQ2Score === opt.value && styles.scoreButtonTextActive
+                    ]}
+                  >
+                    {opt.value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
-        {/* Question 2 */}
-        <View style={styles.card}>
-          <Text style={styles.questionNumber}>Question 2 of 2</Text>
-          <Text style={styles.questionText}>
-            Feeling down, depressed, or hopeless over past 2 weeks
+        {/* --- DEPRESSION SECTION (PHQ-2) --- */}
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: '#991B1B', marginBottom: 8 }}>
+            🧠 2. വിഷാദ രോഗ നിർണ്ണയം (Depression Screening - PHQ-2)
           </Text>
-          <Text style={styles.questionSubtext}>
-            വിഷാദമോ പ്രതീക്ഷയില്ലായ്മയോ അനുഭവപ്പെടുക
-          </Text>
-          <View style={styles.scoreRow}>
-            {options.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[
-                  styles.scoreButton,
-                  q2Score === opt.value && styles.scoreButtonActive
-                ]}
-                onPress={() => setQ2Score(opt.value)}
-              >
-                <Text
+
+          {/* Depression Question 1 */}
+          <View style={styles.card}>
+            <Text style={styles.questionNumber}>Question 3 of 4 (Depression)</Text>
+            <Text style={styles.questionText}>
+              Little interest or pleasure in doing things over past 2 weeks
+            </Text>
+            <Text style={styles.questionSubtext}>
+              കഴിഞ്ഞ രണ്ടാഴ്ചയായി കാര്യങ്ങൾ ചെയ്യുന്നതിൽ താല്പര്യക്കുറവ്
+            </Text>
+            <View style={styles.scoreRow}>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
                   style={[
-                    styles.scoreButtonText,
-                    q2Score === opt.value && styles.scoreButtonTextActive
+                    styles.scoreButton,
+                    depQ1Score === opt.value && styles.scoreButtonActive
                   ]}
+                  onPress={() => setDepQ1Score(opt.value)}
                 >
-                  {opt.value}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.scoreButtonText,
+                      depQ1Score === opt.value && styles.scoreButtonTextActive
+                    ]}
+                  >
+                    {opt.value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Depression Question 2 */}
+          <View style={styles.card}>
+            <Text style={styles.questionNumber}>Question 4 of 4 (Depression)</Text>
+            <Text style={styles.questionText}>
+              Feeling down, depressed, or hopeless over past 2 weeks
+            </Text>
+            <Text style={styles.questionSubtext}>
+              വിഷാദമോ പ്രതീക്ഷയില്ലായ്മയോ അനുഭവപ്പെടുക
+            </Text>
+            <View style={styles.scoreRow}>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.scoreButton,
+                    depQ2Score === opt.value && styles.scoreButtonActive
+                  ]}
+                  onPress={() => setDepQ2Score(opt.value)}
+                >
+                  <Text
+                    style={[
+                      styles.scoreButtonText,
+                      depQ2Score === opt.value && styles.scoreButtonTextActive
+                    ]}
+                  >
+                    {opt.value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
@@ -127,47 +198,16 @@ export const MentalHealthScreen: React.FC = () => {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.resultTitle}>
-                PHQ-2 Score: {total} / 6
+                Anxiety: {anxietyTotal}/6 | Depression: {depressionTotal}/6
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: referralNeeded ? '#92400E' : '#065F46', marginTop: 2 }}>
+                Total Score (PHQ-4): {phq4Total} / 12
               </Text>
               <Text style={styles.resultDescription}>
                 {referralNeeded
-                  ? 'Score >= 3. Initiate full PHQ-9 protocol and clinical counselor referral.'
-                  : 'Score within normal threshold (< 3). Routine follow-up scheduled.'}
+                  ? 'Sub-score >= 3 detected. Initiate detailed clinical screening and counselor referral.'
+                  : 'Scores within normal baseline threshold. Routine follow-up recommended.'}
               </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Voice Feature Extraction Placeholder */}
-        <View style={styles.card}>
-          <View style={styles.voiceHeader}>
-            <View>
-              <Text style={styles.cardSectionTitle}>Voice Tone Acoustic Analysis</Text>
-              <Text style={styles.cardSectionSubtitle}>Acoustic prosody and speech rate indicators</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.miniButton, isVoiceAnalysisActive && styles.miniButtonActive]}
-              onPress={() => setIsVoiceAnalysisActive(!isVoiceAnalysisActive)}
-            >
-              <AppIcon name="mic" size={14} color={isVoiceAnalysisActive ? '#FFFFFF' : '#374151'} />
-              <Text style={[styles.miniButtonText, isVoiceAnalysisActive && styles.miniButtonTextActive]}>
-                {isVoiceAnalysisActive ? 'Active' : 'Analyze'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.metricGrid}>
-            <View style={styles.metricBox}>
-              <Text style={styles.metricLabel}>Speech Rate</Text>
-              <Text style={styles.metricValue}>95 wpm</Text>
-            </View>
-            <View style={styles.metricBox}>
-              <Text style={styles.metricLabel}>Pause Ratio</Text>
-              <Text style={styles.metricValue}>38%</Text>
-            </View>
-            <View style={styles.metricBox}>
-              <Text style={styles.metricLabel}>Distress Tier</Text>
-              <Text style={styles.metricValue}>Low</Text>
             </View>
           </View>
         </View>
@@ -179,17 +219,6 @@ export const MentalHealthScreen: React.FC = () => {
             {savedSuccess ? 'Screening Saved' : 'Save Screening Record'}
           </Text>
         </TouchableOpacity>
-
-        {/* Teammate 1 Scaffold Note */}
-        <View style={styles.devNote}>
-          <View style={styles.devNoteHeader}>
-            <AppIcon name="info" size={16} color="#4B5563" />
-            <Text style={styles.devNoteTitle}>Teammate 1 Workspace</Text>
-          </View>
-          <Text style={styles.devNoteBody}>
-            Extend this module in src/modules/mental_health. Connect with IndicConformer audio stream, implement full PHQ-9 checklist, and wire up referral dispatch.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
