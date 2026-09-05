@@ -100,12 +100,35 @@ class PriorityEngine:
         systolic = latest_vitals.get("systolic_bp")
         diastolic = latest_vitals.get("diastolic_bp")
 
-        if systolic and systolic >= 140:
+        # Longitudinal Delta Deviation Check
+        delta_analysis = household.get("latest_delta_analysis", {})
+        has_spurt_gap = any(g.get("gap_type") == "vitals_delta_hypertensive_spurt" for g in care_gaps)
+        has_faltering_gap = any(g.get("gap_type") == "child_growth_velocity_faltering" for g in care_gaps)
+        has_glycemic_gap = any(g.get("gap_type") == "acute_glycemic_drift" for g in care_gaps)
+
+        if delta_analysis.get("is_acute_crisis"):
+            breakdown["risk"] = cls.W_RISK
+            breakdown["urgency"] = cls.W_URGENCY
+            reasons.append("Critical: Acute hypertensive crisis detected (BP exceeds crisis threshold)")
+        elif delta_analysis.get("is_hypertensive_spurt") or has_spurt_gap:
+            breakdown["risk"] = cls.W_RISK
+            reasons.append("Acute vitals deviation: Systolic BP spurt exceeds 20 mmHg over personal baseline")
+        elif systolic and systolic >= 140:
             breakdown["risk"] = cls.W_RISK
             reasons.append(f"Elevated blood pressure observed: {systolic}/{diastolic or '?'} mmHg")
         elif systolic and systolic >= 130:
             breakdown["risk"] = round(cls.W_RISK * 0.6, 1)
             reasons.append(f"Pre-hypertensive blood pressure: {systolic} mmHg")
+
+        if delta_analysis.get("pediatric_velocity_status") == "weight_loss" or has_faltering_gap:
+            breakdown["risk"] = cls.W_RISK
+            breakdown["vulnerability"] = cls.W_VULNERABILITY
+            reasons.append("Acute pediatric growth faltering: Recent weight drop observed across visits")
+
+        if (delta_analysis.get("glucose_delta") and delta_analysis.get("glucose_delta") >= 50) or has_glycemic_gap:
+            if breakdown["risk"] < round(cls.W_RISK * 0.8, 1):
+                breakdown["risk"] = round(cls.W_RISK * 0.8, 1)
+            reasons.append("Significant glycemic drift: Blood sugar surged >= 50 mg/dL over baseline")
 
         hb = latest_vitals.get("hemoglobin_g_dl")
         if hb and hb < 11.0:

@@ -115,3 +115,49 @@ class SyncPushRequestSchema(BaseModel):
 class SyncPushResponseSchema(BaseModel):
     accepted: List[str]
     failed: List[Dict[str, str]]
+
+class HistoricalVitalsPointSchema(BaseModel):
+    date: str
+    systolic: Optional[float] = None
+    diastolic: Optional[float] = None
+    glucose: Optional[float] = None
+    pulse: Optional[float] = None
+    weight: Optional[float] = None
+    muac: Optional[float] = None
+
+class VitalsDeltaAnalysisSchema(BaseModel):
+    systolic_delta: float = 0.0
+    diastolic_delta: float = 0.0
+    glucose_delta: Optional[float] = None
+    pulse_delta: Optional[float] = None
+    weight_delta_kg: Optional[float] = None
+    is_hypertensive_spurt: bool = False
+    is_acute_crisis: bool = False
+    pediatric_velocity_status: Optional[str] = "not_applicable"
+    severity: str = "normal"
+    alert_headline: str = "Stable Longitudinal Trend"
+    clinical_action: str = "Vitals conform to household longitudinal baseline."
+
+class VitalsBaselineSchema(BaseModel):
+    person_id: str
+    household_id: str
+    person_name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    baseline_metrics: Dict[str, Any] = Field(default_factory=dict)
+    rolling_statistics: Dict[str, Any] = Field(default_factory=dict)
+    latest_measurement: Optional[Dict[str, Any]] = None
+    latest_delta_analysis: Optional[VitalsDeltaAnalysisSchema] = None
+    recent_history_points: List[HistoricalVitalsPointSchema] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class VitalsDeltaRequestSchema(BaseModel):
+    person_id: str
+    household_id: str
+    systolic_bp: Optional[float] = None
+    diastolic_bp: Optional[float] = None
+    glucose_mg_dl: Optional[float] = None
+    pulse_bpm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    muac_cm: Optional[float] = None

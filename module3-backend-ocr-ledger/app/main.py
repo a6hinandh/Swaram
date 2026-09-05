@@ -6,13 +6,13 @@ Canonical persistence, offline sync queue, OCR digitization, and care ledger API
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import households, visits, sync, care_ledger, ocr, encounters, environmental
+from routers import households, visits, sync, care_ledger, ocr, encounters, environmental, vitals
 from db.database import db
 
 app = FastAPI(
     title="Swaram Backend & Care Ledger (Module 3)",
-    version="1.0.0",
-    description="Canonical Data Persistence, Offline Sync, OCR Ingestion, and Unresolved Care Ledger"
+    version="2.0.0",
+    description="Canonical Data Persistence, Longitudinal Vitals Baselines, Offline Sync, OCR Ingestion, and Care Ledger"
 )
 
 app.add_middleware(
@@ -26,6 +26,7 @@ app.add_middleware(
 # Register sub-routers
 app.include_router(households.router)
 app.include_router(visits.router)
+app.include_router(vitals.router)
 app.include_router(encounters.router)
 app.include_router(environmental.router)
 app.include_router(sync.router)

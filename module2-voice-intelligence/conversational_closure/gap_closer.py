@@ -46,6 +46,17 @@ class CareGapConversationalCloser:
                 "is_mandatory": False
             })
 
+        # 4. Acute BP Spurt check (Proactive medication adherence inquiry)
+        sys_bp = extracted_vitals.get("systolic_bp")
+        if sys_bp and sys_bp >= 140:
+            prompts.append({
+                "question_id": "q_vitals_spurt_meds",
+                "field_target": "health_status.medications",
+                "question_text_ml": "രക്തസമ്മർദ്ദം സാധാരണയേക്കാൾ കൂടുതലായി കാണുന്നു. പ്രഷറിന്റെ മരുന്ന് കൃത്യമായി കഴിച്ചിരുന്നോ?",
+                "question_text_en": "Blood pressure is elevated above baseline. Did the patient take anti-hypertensive medicine regularly?",
+                "is_mandatory": False
+            })
+
         return prompts
 
     @staticmethod
@@ -101,13 +112,22 @@ class CareGapConversationalCloser:
                     "target_field": "mcp_card_inspected"
                 }
 
-        # NCD Lifestyle Screening Gap Path
-        elif gap_type in ["ncd_lifestyle_screening", "hypertension_followup"]:
+        # NCD Lifestyle & Longitudinal Vitals Delta Spurt Path
+        elif gap_type in ["vitals_delta_hypertensive_spurt", "ncd_lifestyle_screening", "hypertension_followup"]:
             return {
-                "question_id": "q_ncd_symptoms",
-                "question_text_ml": "കഠിനമായ തലവേദന, കിതപ്പ്, അല്ലെങ്കിൽ തലകറക്കം അനുഭവപ്പെടുന്നുണ്ടോ?",
-                "question_text_en": "Are there symptoms of severe headache, breathlessness, or dizziness?",
-                "target_field": "symptoms"
+                "question_id": "q_vitals_spurt_meds",
+                "question_text_ml": "രക്തസമ്മർദ്ദം സാധാരണയേക്കാൾ കൂടുതലായി കാണുന്നു. പ്രഷറിന്റെ ഗുളിക ഇന്നലെയും ഇന്നും കൃത്യമായി കഴിച്ചിരുന്നോ?",
+                "question_text_en": "Blood pressure is elevated above baseline. Did the patient take anti-hypertensive tablets yesterday and today?",
+                "target_field": "health_status.medications"
+            }
+
+        # Pediatric Growth Velocity Faltering Path
+        elif gap_type in ["child_growth_velocity_faltering"]:
+            return {
+                "question_id": "q_ped_faltering",
+                "question_text_ml": "കുട്ടിയുടെ ഭാരം മുൻപത്തേക്കാൾ കുറവാണ്. കുട്ടിക്ക് അടുത്തിടെ പനിയോ വയറിളക്കമോ ഉണ്ടായിരുന്നോ, ഭക്ഷണം നന്നായി കഴിക്കുന്നുണ്ടോ?",
+                "question_text_en": "Child weight has dropped from previous visit. Did the child have fever/diarrhea recently, and is appetite normal?",
+                "target_field": "nutrition.feeding_concern"
             }
 
         # Mental Health Screening Gap Path

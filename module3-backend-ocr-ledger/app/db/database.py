@@ -24,6 +24,9 @@ households_col = None
 visits_col = None
 care_ledgers_col = None
 environmental_assessments_col = None
+vitals_baselines_col = None
+actions_col = None
+persons_col = None
 
 try:
     print(f"[MongoDB] Initializing connection to: {MONGO_URI.split('@')[-1] if '@' in MONGO_URI else MONGO_URI}...")
@@ -37,18 +40,38 @@ try:
     visits_col = db["visits"]
     care_ledgers_col = db["care_ledgers"]
     environmental_assessments_col = db["environmental_assessments"]
+    vitals_baselines_col = db["vitals_baselines"]
+    actions_col = db["actions"]
+    persons_col = db["persons"]
 
     # Setup indexes
     encounters_col.create_index([("visit.visit_id", ASCENDING)], unique=True)
     encounters_col.create_index([("visit.household_id", ASCENDING)])
     encounters_col.create_index([("person.person_id", ASCENDING)])
     encounters_col.create_index([("visit.date", ASCENDING)])
+    encounters_col.create_index([("person.person_id", ASCENDING), ("visit.date", -1)])
 
     households_col.create_index([("id", ASCENDING)], unique=True)
+    households_col.create_index([("priority_score", -1)])
+
     visits_col.create_index([("visit_id", ASCENDING)], unique=True)
     environmental_assessments_col.create_index([("assessment_id", ASCENDING)], unique=True)
     environmental_assessments_col.create_index([("household_id", ASCENDING)])
     environmental_assessments_col.create_index([("timestamp", ASCENDING)])
+
+    vitals_baselines_col.create_index([("person_id", ASCENDING)], unique=True)
+    vitals_baselines_col.create_index([("household_id", ASCENDING)])
+    vitals_baselines_col.create_index([("latest_delta_analysis.severity", ASCENDING)])
+    vitals_baselines_col.create_index([("updated_at", ASCENDING)])
+
+    care_ledgers_col.create_index([("household_id", ASCENDING)], unique=True)
+    care_ledgers_col.create_index([("priority_score", -1)])
+
+    actions_col.create_index([("action_id", ASCENDING)], unique=True)
+    actions_col.create_index([("household_id", ASCENDING)])
+
+    persons_col.create_index([("person_id", ASCENDING)], unique=True)
+    persons_col.create_index([("household_id", ASCENDING)])
 
     print("[MongoDB] Successfully connected to MongoDB database 'swaram_db' with all indexes ready.")
 except (ConnectionFailure, OperationFailure, Exception) as e:
@@ -60,3 +83,6 @@ except (ConnectionFailure, OperationFailure, Exception) as e:
     visits_col = None
     care_ledgers_col = None
     environmental_assessments_col = None
+    vitals_baselines_col = None
+    actions_col = None
+    persons_col = None

@@ -350,5 +350,76 @@ export const apiClient = {
         message: 'Saved locally in offline mode'
       };
     }
+  },
+
+  /**
+   * Fetch Patient Vitals Baseline & Longitudinal History Points from MongoDB Atlas
+   */
+  async getVitalsBaseline(personId: string): Promise<ApiCallStatus<any>> {
+    const url = `${getBackendBaseUrl()}/vitals/baseline/${personId}`;
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Retrieved baseline from MongoDB Atlas.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: null,
+        isMockFallback: true,
+        message: `Offline mode: using local baseline (${err?.message || 'offline'}).`
+      };
+    }
+  },
+
+  /**
+   * Submit Current Vitals Measurement for Real-Time Delta Deviation Analysis against MongoDB
+   */
+  async analyzeVitalsDelta(req: {
+    person_id: string;
+    household_id: string;
+    systolic_bp?: number;
+    diastolic_bp?: number;
+    glucose_mg_dl?: number;
+    pulse_bpm?: number;
+    weight_kg?: number;
+    muac_cm?: number;
+  }): Promise<ApiCallStatus<any>> {
+    const url = `${getBackendBaseUrl()}/vitals/analyze-delta`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Delta deviation analysis computed and synchronized with MongoDB Care Ledger.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: null,
+        isMockFallback: true,
+        message: `Offline mode: calculated locally (${err?.message || 'offline'}).`
+      };
+    }
   }
 };
+

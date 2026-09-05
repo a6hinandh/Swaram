@@ -1,5 +1,11 @@
 import { WeatherData } from '../types';
-import * as Location from 'expo-location';
+
+let Location: any = null;
+try {
+  Location = require('expo-location');
+} catch (e) {
+  // Graceful fallback
+}
 
 export interface LocationCoordinate {
   id: string;
