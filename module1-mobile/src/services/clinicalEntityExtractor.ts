@@ -1,0 +1,546 @@
+/**
+ * Swaram - Clinical Entity Extractor
+ * Extracts comprehensive structured clinical records from bilingual (Malayalam / English)
+ * voice transcripts recorded during home visits by ASHA / healthcare workers.
+ */
+
+import {
+  StructuredClinicalRecord,
+  ComplaintItem,
+  MedicationItem,
+  createEmptyClinicalRecord,
+} from '../types/structuredClinicalRecord';
+import { HouseholdSummary } from '../types';
+
+// --- Helper Date Formatting ---
+function formatDateYYYYMMDD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Calculate target day of week (0 = Sun, 1 = Mon, ..., 4 = Thu, etc.)
+function getNextDayOfWeek(targetDay: number, fromDate = new Date()): Date {
+  const result = new Date(fromDate);
+  const currentDay = result.getDay();
+  let daysUntil = (targetDay - currentDay + 7) % 7;
+  if (daysUntil === 0) daysUntil = 7; // Next occurrence, not today
+  result.setDate(result.getDate() + daysUntil);
+  return result;
+}
+
+/**
+ * Main Clinical Entity Extractor
+ */
+export function extractStructuredClinicalRecord(
+  transcript: string,
+  household?: HouseholdSummary | null
+): StructuredClinicalRecord {
+  const rawText = transcript ? transcript.trim() : '';
+  const now = new Date();
+  const todayStr = formatDateYYYYMMDD(now);
+
+  const visitId = `visit_${Date.now()}`;
+  const householdId = household?.id || household?.external_id || `hh_${Date.now().toString().slice(-6)}`;
+  const record = createEmptyClinicalRecord(visitId, householdId);
+
+  // Set default visit date to today
+  record.visit.date = todayStr;
+
+  if (!rawText) {
+    record.extraction.source_transcript = '';
+    record.extraction.extraction_timestamp = now.toISOString();
+    record.extraction.confidence_score = 0;
+    record.extraction.language_detected = 'en';
+    return record;
+  }
+
+  // Detect script/language
+  const malayalamCharCount = (rawText.match(/[\u0D00-\u0D7F]/g) || []).length;
+  const englishCharCount = (rawText.match(/[a-zA-Z]/g) || []).length;
+  if (malayalamCharCount > 0 && englishCharCount > 0) {
+    record.extraction.language_detected = 'mixed';
+  } else if (malayalamCharCount > 0) {
+    record.extraction.language_detected = 'ml';
+  } else {
+    record.extraction.language_detected = 'en';
+  }
+
+  // --- 1. PERSON & DEMOGRAPHICS ---
+  // A. Age Detection
+  let detectedAge: number | null = null;
+  // "28 വയസ്സ്", "28 വയസ്സുള്ള", "28 വയസ്", "age 28", "28 years old", "28 yrs"
+  const ageMatch = rawText.match(/(\d{1,3})\s*(?:വയസ്സ്|വയസ്സുള്ള|വയസ്|വയസാ|years?\s*old|yrs?\s*old|age)/i)
+    || rawText.match(/(?:age|വയസ്സ്)[:\s]*(\d{1,3})/i);
+
+  if (ageMatch) {
+    const parsed = parseInt(ageMatch[1], 10);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 125) {
+      detectedAge = parsed;
+    }
+  }
+
+  // Check infant months if age in years not found (e.g. "8 മാസം", "8 months old")
+  if (detectedAge === null) {
+    const monthMatch = rawText.match(/(\d{1,2})\s*(?:മാസം|മാസമുള്ള|months?\s*old|mths?\s*old)/i);
+    if (monthMatch) {
+      const months = parseInt(monthMatch[1], 10);
+      if (!isNaN(months) && months <= 24) {
+        detectedAge = 0; // Infant
+      }
+    }
+  }
+
+  if (detectedAge !== null) {
+    record.person.age = detectedAge;
+    // Determine life stage
+    if (detectedAge < 1) {
+      record.person.life_stage = 'infant';
+    } else if (detectedAge < 13) {
+      record.person.life_stage = 'child';
+    } else if (detectedAge < 20) {
+      record.person.life_stage = 'adolescent';
+    } else if (detectedAge < 60) {
+      record.person.life_stage = 'adult';
+    } else {
+      record.person.life_stage = 'elderly';
+    }
+  }
+
+  // B. Name Extraction
+  // Look for patterns like: "പേര് ലക്ഷ്മി", "Name is Radha", "ശ്രീമതി ലക്ഷ്മി", or first word followed by comma/age
+  let detectedName: string | null = null;
+  const nameLabelMatch = rawText.match(/(?:പേര്|രോഗി|ശ്രീമതി|ശ്രീ|name\s*(?:is)?)\s*[:]?\s*([A-Za-z\u0D00-\u0D7F]+)/i);
+  if (nameLabelMatch && nameLabelMatch[1]) {
+    detectedName = nameLabelMatch[1].trim();
+  } else {
+    // Check if start of transcript has name before comma or age (e.g. "ലക്ഷ്മി, 28 വയസ്സ്" or "Lakshmi, 28")
+    const leadingNameMatch = rawText.match(/^([A-Za-z\u0D00-\u0D7F]{2,20})\s*[,.]\s*(?:\d{1,3}|വയസ്സ്|age)/i);
+    if (leadingNameMatch) {
+      detectedName = leadingNameMatch[1].trim();
+    }
+  }
+
+  if (detectedName) {
+    record.person.name = detectedName;
+    record.person.person_id = `p_${detectedName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}_${Date.now().toString().slice(-4)}`;
+  } else if (household?.head_of_household) {
+    record.person.name = household.head_of_household;
+    record.person.person_id = `p_${(household.id || 'head').slice(-6)}`;
+  }
+
+  // C. Sex Detection
+  const femaleSignals = /(?:സ്ത്രീ|പെൺ|പെൺകുട്ടി|അമ്മ|ഭാര്യ|സഹോദരി|ഗർഭിണി|പ്രസവി|female|woman|she|her|mrs|smt)/i;
+  const maleSignals = /(?:പുരുഷൻ|ആൺ|ആൺകുട്ടി|അച്ഛൻ|ഭർത്താവ്|സഹോദരൻ|ശ്രീ|male|man|he|his|mr)/i;
+
+  if (femaleSignals.test(rawText)) {
+    record.person.sex = 'female';
+  } else if (maleSignals.test(rawText)) {
+    record.person.sex = 'male';
+  }
+
+  // D. Pregnancy Status
+  const isPregnant = /(?:ഗർഭിണി|ഗർഭം|ഗർഭകാലം|pregnant|pregnancy|anc\b)/i.test(rawText);
+  const isPostpartum = /(?:പ്രസവിച്ചു|പ്രസവം\s*കഴിഞ്ഞ്|മുലയൂട്ടുന്ന|മുലപ്പാൽ\s*നൽകുന്ന|postpartum|delivered)/i.test(rawText);
+
+  if (isPregnant) {
+    record.person.pregnancy_status = 'pregnant';
+    record.person.sex = 'female';
+    record.preventive_care.maternal_care.supplements = 'taking';
+  } else if (isPostpartum) {
+    record.person.pregnancy_status = 'postpartum';
+    record.person.sex = 'female';
+  } else if (record.person.sex === 'female' && record.person.age !== null && record.person.age >= 18 && record.person.age <= 50) {
+    record.person.pregnancy_status = 'not_pregnant';
+  }
+
+  // --- 2. MEASUREMENTS ---
+  // A. Blood Pressure: e.g. "130/85", "120 / 80", "ബിപി 130/85"
+  const bpMatch = rawText.match(/(?:ബിപി|പ്രഷർ|bp|blood\s*pressure)?[:\s]*(\b\d{2,3}\s*[\/]\s*\d{2,3}\b)/i);
+  if (bpMatch) {
+    const cleanBp = bpMatch[1].replace(/\s+/g, '');
+    record.measurements.blood_pressure = cleanBp;
+
+    // Check if BP indicates hypertension care gap
+    const [sysStr, diaStr] = cleanBp.split('/');
+    const sys = parseInt(sysStr, 10);
+    const dia = parseInt(diaStr, 10);
+    if (sys >= 140 || dia >= 90) {
+      record.care_gaps.push({
+        gap_type: 'screening',
+        description: `Elevated blood pressure (${cleanBp}) detected. Requires medical evaluation and lifestyle monitoring.`,
+        severity: 'high',
+        status: 'open',
+      });
+      // Also register as known condition if high
+      record.health_status.known_conditions.push({
+        condition: 'Hypertension',
+        status: 'active',
+      });
+    }
+  }
+
+  // B. Weight: e.g. "58 കിലോ", "58.5 kg", "ഭാരം 58"
+  const weightMatch = rawText.match(/(?:ഭാരം|തൂക്കം|weight)[:\s]*(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs)?/i)
+    || rawText.match(/(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs)\b/i);
+  if (weightMatch) {
+    const wt = parseFloat(weightMatch[1]);
+    if (!isNaN(wt) && wt > 1 && wt < 250) {
+      record.measurements.weight_kg = wt;
+    }
+  }
+
+  // C. Temperature: e.g. "101.2 F", "പനി 100", "താപനില 99"
+  const tempMatch = rawText.match(/(?:താപനില|temperature|temp)[:\s]*(\d{2,3}(?:\.\d+)?)\s*(?:f|ഫാരൻഹീറ്റ്|°f)?/i)
+    || rawText.match(/(\d{2,3}(?:\.\d+)?)\s*(?:°f|f\b|ഫാരൻഹീറ്റ്)/i);
+  if (tempMatch) {
+    const temp = parseFloat(tempMatch[1]);
+    if (!isNaN(temp) && temp >= 95 && temp <= 108) {
+      record.measurements.temperature_f = temp;
+    }
+  }
+
+  // D. Pulse / Heart Rate: e.g. "പൾസ് 78", "pulse 78 bpm"
+  const pulseMatch = rawText.match(/(?:പൾസ്|നാഡിമിടിപ്പ്|pulse|heart\s*rate)[:\s]*(\d{2,3})\s*(?:bpm)?/i);
+  if (pulseMatch) {
+    const pulse = parseInt(pulseMatch[1], 10);
+    if (!isNaN(pulse) && pulse >= 40 && pulse <= 200) {
+      record.measurements.pulse_bpm = pulse;
+    }
+  }
+
+  // E. SpO2: e.g. "ഓക്സിജൻ 98%", "spo2 98"
+  const spo2Match = rawText.match(/(?:ഓക്സിജൻ|spo2|oxygen)[:\s]*(\d{2,3})\s*(?:%|ശതമാനം)?/i);
+  if (spo2Match) {
+    const spo2 = parseInt(spo2Match[1], 10);
+    if (!isNaN(spo2) && spo2 >= 60 && spo2 <= 100) {
+      record.measurements.spo2_percent = spo2;
+    }
+  }
+
+  // F. Blood Sugar: e.g. "ഷുഗർ 140", "sugar 160 mg/dl"
+  const sugarMatch = rawText.match(/(?:ഷുഗർ|ഷുഗർനില|രക്തത്തിലെ\s*പഞ്ചസാര|sugar|blood\s*sugar|rbs|fbs|ppbs)[:\s]*(\d{2,3}(?:\.\d+)?)/i);
+  if (sugarMatch) {
+    const sugar = parseFloat(sugarMatch[1]);
+    if (!isNaN(sugar) && sugar >= 40 && sugar <= 600) {
+      record.measurements.blood_sugar_mg_dl = sugar;
+      if (sugar >= 180) {
+        record.care_gaps.push({
+          gap_type: 'screening',
+          description: `Elevated blood sugar level (${sugar} mg/dL) observed. Diabetes care review indicated.`,
+          severity: 'high',
+          status: 'open',
+        });
+        record.health_status.known_conditions.push({
+          condition: 'Diabetes Mellitus',
+          status: 'active',
+        });
+      }
+    }
+  }
+
+  // G. Hemoglobin: e.g. "ഹീമോഗ്ലോബിൻ 11.5", "hb 10.2"
+  const hbMatch = rawText.match(/(?:ഹീമോഗ്ലോബിൻ|hb|hemoglobin)[:\s]*(\d{1,2}(?:\.\d+)?)/i);
+  if (hbMatch) {
+    const hb = parseFloat(hbMatch[1]);
+    if (!isNaN(hb) && hb >= 3 && hb <= 22) {
+      record.measurements.hemoglobin_g_dl = hb;
+      if (hb < 11 && record.person.pregnancy_status === 'pregnant') {
+        record.care_gaps.push({
+          gap_type: 'maternal',
+          description: `Low hemoglobin (${hb} g/dL) detected in pregnancy (Gestational Anemia). IFA & nutrition support needed.`,
+          severity: 'high',
+          status: 'open',
+        });
+      }
+    }
+  }
+
+  // --- 3. HEALTH STATUS: COMPLAINTS ---
+  const complaintsMap: Array<{
+    symptomRegex: RegExp;
+    symptomName: string;
+  }> = [
+    { symptomRegex: /(?:പനി|fever)/i, symptomName: 'Fever' },
+    { symptomRegex: /(?:തലവേദന|headache)/i, symptomName: 'Headache' },
+    { symptomRegex: /(?:ചുമ|cough)/i, symptomName: 'Cough' },
+    { symptomRegex: /(?:ജലദോഷം|മൂക്കൊലിപ്പ്|cold|runny\s*nose)/i, symptomName: 'Cold / Rhinitis' },
+    { symptomRegex: /(?:ശ്വാസംമുട്ടൽ|ശ്വാസതടസ്സം|shortness\s*of\s*breath|breathlessness|wheezing)/i, symptomName: 'Shortness of breath' },
+    { symptomRegex: /(?:ഛർദ്ദി|ഓക്കാനം|vomiting|nausea)/i, symptomName: 'Vomiting / Nausea' },
+    { symptomRegex: /(?:വയറിളക്കം|വയറ്റിളക്കം|diarrhea|loose\s*motions)/i, symptomName: 'Diarrhea' },
+    { symptomRegex: /(?:വയറുവേദന|stomach\s*pain|abdominal\s*pain)/i, symptomName: 'Abdominal pain' },
+    { symptomRegex: /(?:ക്ഷീണം|തളർച്ച|fatigue|tiredness|weakness)/i, symptomName: 'Fatigue' },
+    { symptomRegex: /(?:നെഞ്ചുവേദന|chest\s*pain)/i, symptomName: 'Chest pain' },
+    { symptomRegex: /(?:ശരീരവേദന|മേലുവേദന|body\s*pain|body\s*ache)/i, symptomName: 'Body pain' },
+    { symptomRegex: /(?:നീര്|കാലിൽ\s*നീര്|swelling|edema)/i, symptomName: 'Pedal Edema' },
+    { symptomRegex: /(?:തലകറക്കം|കണ്ണിൽ\s*ഇരുട്ട്|dizziness|giddiness)/i, symptomName: 'Dizziness' },
+  ];
+
+  // Duration matcher (e.g. "രണ്ട് ദിവസമായി", "2 days", "3 weeks", "ഒരു ആഴ്ചയായി")
+  const durationMatch = rawText.match(/(\d+|ഒരു|രണ്ട്|മൂന്ന്|നാല്|അഞ്ച്)\s*(?:ദിവസമായി|ദിവസം|ആഴ്ചയായി|ആഴ്ച|മാസമായി|മാസം|days?|weeks?|months?)/i);
+  let globalDuration = 'unknown';
+  if (durationMatch) {
+    const numWordMap: Record<string, string> = {
+      'ഒരു': '1',
+      'രണ്ട്': '2',
+      'മൂന്ന്': '3',
+      'നാല്': '4',
+      'അഞ്ച്': '5',
+    };
+    const rawNum = durationMatch[1].toLowerCase();
+    const resolvedNum = numWordMap[rawNum] || rawNum;
+    const matchStr = durationMatch[0];
+    if (/ദിവസം|ദിവസമായി|days?/i.test(matchStr)) {
+      globalDuration = `${resolvedNum} days`;
+    } else if (/ആഴ്ച|ആഴ്ചയായി|weeks?/i.test(matchStr)) {
+      globalDuration = `${resolvedNum} weeks`;
+    } else if (/മാസം|മാസമായി|months?/i.test(matchStr)) {
+      globalDuration = `${resolvedNum} months`;
+    } else {
+      globalDuration = durationMatch[0];
+    }
+  }
+
+  for (const item of complaintsMap) {
+    if (item.symptomRegex.test(rawText)) {
+      let severity: 'mild' | 'moderate' | 'severe' | 'unknown' = 'unknown';
+      if (/(?:കഠിനമായ|കൂടുതൽ|തീവ്രമായ|severe|high)/i.test(rawText)) {
+        severity = 'severe';
+      } else if (/(?:നേരിയ|കുറച്ച്|mild|slight)/i.test(rawText)) {
+        severity = 'mild';
+      } else if (/(?:ഇടത്തരം|moderate)/i.test(rawText)) {
+        severity = 'moderate';
+      }
+
+      let trend: 'improving' | 'worsening' | 'unchanged' | 'unknown' = 'unknown';
+      if (/(?:കൂടുന്നു|കൂടിവരുന്നു|worsening|increased)/i.test(rawText)) {
+        trend = 'worsening';
+      } else if (/(?:കുറയുന്നു|ഭേദമാകുന്നു|improving|better)/i.test(rawText)) {
+        trend = 'improving';
+      } else if (/(?:മാറ്റമില്ല|തുടരുന്നു|unchanged|same)/i.test(rawText)) {
+        trend = 'unchanged';
+      }
+
+      const complaint: ComplaintItem = {
+        symptom: item.symptomName,
+        duration: globalDuration,
+        severity,
+        trend,
+      };
+      record.health_status.complaints.push(complaint);
+    }
+  }
+
+  // --- 4. KNOWN CONDITIONS ---
+  const conditionPatterns = [
+    { regex: /(?:ഹൈപ്പർടെൻഷൻ|ബിപി\s*രോഗം|പ്രഷർ|hypertension|high\s*bp)/i, name: 'Hypertension' },
+    { regex: /(?:ഡയബറ്റിസ്|പ്രമേഹം|ഷുഗർ\s*രോഗം|diabetes)/i, name: 'Diabetes Mellitus' },
+    { regex: /(?:ആസ്ത്മ|ശ്വാസംമുട്ട്\s*രോഗം|asthma)/i, name: 'Bronchial Asthma' },
+    { regex: /(?:തൈറോയ്ഡ്|thyroid)/i, name: 'Thyroid Disorder' },
+    { regex: /(?:ഹൃദ്രോഗം|heart\s*disease)/i, name: 'Cardiovascular Disease' },
+  ];
+
+  for (const cond of conditionPatterns) {
+    if (cond.regex.test(rawText)) {
+      // Check if already added
+      const exists = record.health_status.known_conditions.some((c) => c.condition === cond.name);
+      if (!exists) {
+        record.health_status.known_conditions.push({
+          condition: cond.name,
+          status: 'active',
+        });
+      }
+    }
+  }
+
+  // --- 5. MEDICATIONS ---
+  const medPatterns = [
+    {
+      regex: /(?:അയൺ\s*ഗുളിക|ഇരുമ്പ്\s*ഗുളിക|ifa|iron\s*(?:folic\s*acid|tablet|tablets)?)/i,
+      name: 'Iron & Folic Acid (IFA)',
+    },
+    {
+      regex: /(?:കാൽസ്യം\s*ഗുളിക|calcium(?:\s*tablets?)?)/i,
+      name: 'Calcium Tablets',
+    },
+    {
+      regex: /(?:പാരസെറ്റമോൾ|paracetamol|dolo|calpol)/i,
+      name: 'Paracetamol',
+    },
+    {
+      regex: /(?:ബിപി\s*(?:ഗുളിക|മരുന്ന്)|അംലോഡിപിൻ|amlodipine|telmisartan|atenolol|bp\s*med(?:icine)?)/i,
+      name: 'Antihypertensive Medication',
+    },
+    {
+      regex: /(?:ഷുഗർ\s*(?:ഗുളിക|മരുന്ന്)|മെറ്റ്ഫോർമിൻ|metformin|glimepiride|insulin|diabetes\s*med(?:icine)?)/i,
+      name: 'Antidiabetic Medication',
+    },
+  ];
+
+  for (const med of medPatterns) {
+    if (med.regex.test(rawText)) {
+      let adherence: 'regular' | 'irregular' | 'stopped' | 'unknown' = 'unknown';
+      if (/(?:കൃത്യമായി|മുടങ്ങാതെ|daily|regularly)/i.test(rawText)) {
+        adherence = 'regular';
+      } else if (/(?:മറക്കുന്നു|ഇടയ്ക്കിടെ|irregularly|sometimes)/i.test(rawText)) {
+        adherence = 'irregular';
+      } else if (/(?:നിർത്തി|കഴിക്കുന്നില്ല|stopped|discontinued)/i.test(rawText)) {
+        adherence = 'stopped';
+      } else {
+        adherence = 'regular'; // Default assumption when mentioned as taking
+      }
+
+      const medItem: MedicationItem = {
+        name: med.name,
+        taking: adherence === 'stopped' ? 'no' : 'yes',
+        adherence,
+        available: 'yes',
+      };
+      record.health_status.medications.push(medItem);
+    }
+  }
+
+  // --- 6. PREVENTIVE CARE: IMMUNIZATION & MATERNAL ---
+  // Immunization
+  if (/(?:വാക്സിൻ\s*എടുത്തു|കുത്തിവെപ്പ്\s*എടുത്തു|vaccin(?:e|ated)|immunized)/i.test(rawText)) {
+    record.preventive_care.immunization.status = 'up_to_date';
+  } else if (/(?:വാക്സിൻ\s*ബാക്കി|കുത്തിവെപ്പ്\s*എടുത്തിട്ടില്ല|overdue|pending\s*vaccine)/i.test(rawText)) {
+    record.preventive_care.immunization.status = 'pending';
+    record.care_gaps.push({
+      gap_type: 'immunization',
+      description: 'Scheduled immunization pending or overdue for child/beneficiary.',
+      severity: 'medium',
+      status: 'open',
+    });
+  }
+
+  // Specific vaccines
+  if (/(?:പെന്റാവാലന്റ്|pentavalent)/i.test(rawText)) {
+    record.preventive_care.immunization.vaccines_given.push('Pentavalent');
+  }
+  if (/(?:ബിസിജി|bcg)/i.test(rawText)) {
+    record.preventive_care.immunization.vaccines_given.push('BCG');
+  }
+  if (/(?:പോളിയോ|opv|polio)/i.test(rawText)) {
+    record.preventive_care.immunization.vaccines_given.push('OPV');
+  }
+  if (/(?:എംആർ|mr|measles)/i.test(rawText)) {
+    record.preventive_care.immunization.vaccines_given.push('MR');
+  }
+
+  // Maternal care supplements
+  if (record.person.pregnancy_status === 'pregnant') {
+    const hasIFA = record.health_status.medications.some((m) => m.name.includes('IFA') || m.name.includes('Iron'));
+    if (hasIFA) {
+      record.preventive_care.maternal_care.supplements = 'taking';
+      record.preventive_care.maternal_care.ifa_tablets_received = 100;
+    } else {
+      record.care_gaps.push({
+        gap_type: 'maternal',
+        description: 'Pregnant mother not documented taking Iron & Folic Acid (IFA) supplements.',
+        severity: 'high',
+        status: 'open',
+      });
+    }
+  }
+
+  // --- 7. NUTRITION ---
+  if (record.person.life_stage === 'infant' || record.person.age === 0) {
+    if (/(?:മുലപ്പാൽ\s*മാത്രം|exclusive\s*breastfeeding)/i.test(rawText)) {
+      record.nutrition.child_nutrition.breastfeeding = 'exclusive';
+    } else if (/(?:മുലപ്പാൽ|breastfeeding)/i.test(rawText)) {
+      record.nutrition.child_nutrition.breastfeeding = 'partial';
+    }
+
+    if (/(?:കുറുക്ക്|കുറുക്ക്\s*തുടങ്ങി|complementary\s*feeding|solids\s*started)/i.test(rawText)) {
+      record.nutrition.child_nutrition.complementary_feeding = 'started';
+    }
+  }
+
+  // --- 8. MENTAL & SOCIAL ---
+  if (/(?:പുകവലി|ബീഡി|സിഗരറ്റ്|മുറുക്ക്|smoking|tobacco)/i.test(rawText)) {
+    record.mental_social.substance_use.tobacco = 'yes';
+  }
+  if (/(?:മദ്യപാനം|മദ്യം|alcohol|drinking)/i.test(rawText)) {
+    record.mental_social.substance_use.alcohol = 'yes';
+  }
+  if (/(?:വിഷാദം|depressed|sadness)/i.test(rawText)) {
+    record.mental_social.mood_affect = 'depressed';
+  } else if (/(?:ഉത്കണ്ഠ|anxious|anxiety)/i.test(rawText)) {
+    record.mental_social.mood_affect = 'anxious';
+  }
+
+  // --- 9. FOLLOW-UP INTELLIGENCE ---
+  // Detect if follow-up required
+  const followUpSignals = /(?:അടുത്ത|കാണണം|വ്യാഴാഴ്ച|തിങ്കളാഴ്ച|ചൊവ്വാഴ്ച|ബുധനാഴ്ച|വെള്ളിയാഴ്ച|ശനിയാഴ്ച|ഞായറാഴ്ച|next\s*week|follow\s*up|see\s*again|checkup|visit)/i;
+  const referralSignals = /(?:ഡോക്ടർ|ആശുപത്രി|പിഎച്ച്സി|സിഎച്ച്സി|doctor|hospital|phc|chc|mo\b|refer)/i;
+
+  if (followUpSignals.test(rawText) || record.care_gaps.length > 0) {
+    record.follow_up.required = 'yes';
+    record.visit.visit_type = 'routine';
+
+    // Assign follow up recipient
+    if (referralSignals.test(rawText)) {
+      record.follow_up.assigned_to = 'mo';
+      record.visit.visit_type = 'referral';
+      record.follow_up.reason = 'Medical Officer consultation and clinical review';
+    } else {
+      record.follow_up.assigned_to = 'asha';
+      record.follow_up.reason = 'ASHA home visit follow-up and monitoring';
+    }
+
+    // Determine due date from spoken text
+    // Malayalam Day of week map
+    const dayKeywords: Array<{ regex: RegExp; dayNum: number }> = [
+      { regex: /(?:ഞായറാഴ്ച|sunday)/i, dayNum: 0 },
+      { regex: /(?:തിങ്കളാഴ്ച|monday)/i, dayNum: 1 },
+      { regex: /(?:ചൊവ്വാഴ്ച|tuesday)/i, dayNum: 2 },
+      { regex: /(?:ബുധനാഴ്ച|wednesday)/i, dayNum: 3 },
+      { regex: /(?:വ്യാഴാഴ്ച|thursday)/i, dayNum: 4 },
+      { regex: /(?:വെള്ളിയാഴ്ച|friday)/i, dayNum: 5 },
+      { regex: /(?:ശനിയാഴ്ച|saturday)/i, dayNum: 6 },
+    ];
+
+    let computedDueDate: Date | null = null;
+    for (const d of dayKeywords) {
+      if (d.regex.test(rawText)) {
+        computedDueDate = getNextDayOfWeek(d.dayNum, now);
+        break;
+      }
+    }
+
+    if (!computedDueDate) {
+      if (/(?:നാളെ|tomorrow)/i.test(rawText)) {
+        computedDueDate = new Date(now);
+        computedDueDate.setDate(computedDueDate.getDate() + 1);
+      } else if (/(?:രണ്ട്\s*ദിവസം|2\s*days?)/i.test(rawText)) {
+        computedDueDate = new Date(now);
+        computedDueDate.setDate(computedDueDate.getDate() + 2);
+      } else {
+        // Default follow up: 7 days
+        computedDueDate = new Date(now);
+        computedDueDate.setDate(computedDueDate.getDate() + 7);
+      }
+    }
+
+    record.follow_up.due_date = formatDateYYYYMMDD(computedDueDate);
+  }
+
+  // --- 10. METADATA & CONFIDENCE SCORE ---
+  record.extraction.source_transcript = rawText;
+  record.extraction.extraction_timestamp = now.toISOString();
+
+  // Confidence estimation based on extracted richness
+  let score = 0.5; // Base confidence for non-empty transcript
+  if (record.person.name) score += 0.1;
+  if (record.person.age !== null) score += 0.1;
+  if (record.measurements.blood_pressure || record.measurements.weight_kg) score += 0.1;
+  if (record.health_status.complaints.length > 0) score += 0.1;
+  if (record.health_status.medications.length > 0) score += 0.05;
+  if (record.follow_up.due_date) score += 0.05;
+
+  record.extraction.confidence_score = Math.min(0.98, parseFloat(score.toFixed(2)));
+
+  return record;
+}
