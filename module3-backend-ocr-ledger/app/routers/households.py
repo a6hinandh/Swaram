@@ -4,7 +4,7 @@ from models.schemas import HouseholdSummarySchema
 
 router = APIRouter(prefix="/api/v1/households", tags=["Households"])
 
-# In-memory canonical state for prototype/testing
+# In-memory canonical state for Swaram Next-Gen Platform
 MOCK_HOUSEHOLDS_DB = [
     {
         "id": "h-lakshmi-001",
@@ -12,12 +12,14 @@ MOCK_HOUSEHOLDS_DB = [
         "head_of_household": "Lakshmi Amma",
         "address": "House 42, Kudumbashree Lane, Aluva",
         "members_count": 4,
-        "open_care_gaps": 2,
+        "open_care_gaps": 3,
         "priority_score": 88.5,
         "priority_reasons": [
             "ANC 3rd trimester check overdue by 8 days",
-            "Child immunisation (MR vaccine) pending confirmation"
-        ]
+            "Child immunisation (MR vaccine) pending confirmation",
+            "Child malnutrition monitoring active (low dietary diversity)"
+        ],
+        "malnutrition_risk": "Moderate"
     },
     {
         "id": "h-suresh-002",
@@ -27,13 +29,14 @@ MOCK_HOUSEHOLDS_DB = [
         "members_count": 3,
         "open_care_gaps": 1,
         "priority_score": 52.0,
-        "priority_reasons": ["NCD Hypertension quarterly recheck due"]
+        "priority_reasons": ["NCD Hypertension quarterly recheck due"],
+        "malnutrition_risk": "Normal"
     }
 ]
 
 @router.get("", response_model=List[HouseholdSummarySchema])
 def get_households():
-    """Returns today's households assigned to the ASHA worker."""
+    """Returns today's households assigned to the ASHA worker with priority and malnutrition indicators."""
     return MOCK_HOUSEHOLDS_DB
 
 @router.get("/{household_id}", response_model=HouseholdSummarySchema)

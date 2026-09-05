@@ -9,11 +9,36 @@ class VitalsSchema(BaseModel):
     temperature_c: Optional[float] = None
     hemoglobin_g_dl: Optional[float] = None
 
+class MalnutritionAssessmentSchema(BaseModel):
+    child_age_months: Optional[int] = None
+    muac_cm: Optional[float] = None
+    wasting_status: Optional[str] = "normal"
+    stunting_status: Optional[str] = "normal"
+    dietary_diversity_score: Optional[int] = None
+    consumed_milk: Optional[bool] = None
+    consumed_eggs: Optional[bool] = None
+    consumed_pulses: Optional[bool] = None
+    edema_present: Optional[bool] = False
+    maternal_anemia_flag: Optional[bool] = False
+    risk_level: str = "normal"
+    clinical_notes: Optional[str] = None
+
+class SwaramSurveyFieldSchema(BaseModel):
+    field_key: str
+    section: str
+    question_ml: str
+    question_en: str
+    value: str
+    status: str = "extracted"
+
 class PersonUpdateSchema(BaseModel):
     person_id: str
     name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
     pregnancy_weeks: Optional[int] = None
     vitals: Optional[VitalsSchema] = None
+    malnutrition: Optional[MalnutritionAssessmentSchema] = None
     symptoms: Optional[List[str]] = Field(default_factory=list)
     medications_given: Optional[List[str]] = Field(default_factory=list)
     services_provided: Optional[List[str]] = Field(default_factory=list)
@@ -25,6 +50,8 @@ class ConfirmedVisitSchema(BaseModel):
     worker_id: str
     timestamp: str
     person_updates: List[PersonUpdateSchema]
+    survey_fields: Optional[List[SwaramSurveyFieldSchema]] = Field(default_factory=list)
+    malnutrition_assessment: Optional[MalnutritionAssessmentSchema] = None
     audio_record_ref: Optional[str] = None
     confirmed_by_worker_at: str
     corrections_made: Optional[List[str]] = Field(default_factory=list)
@@ -39,6 +66,7 @@ class HouseholdSummarySchema(BaseModel):
     open_care_gaps: int
     priority_score: float
     priority_reasons: List[str]
+    malnutrition_risk: Optional[str] = "Normal"
 
 class CareGapSchema(BaseModel):
     id: str
@@ -64,6 +92,7 @@ class HouseholdCareLedgerSchema(BaseModel):
     priority_score: float
     priority_reasons: List[str]
     longitudinal_narrative: str
+    malnutrition_trend: Optional[str] = "Normal growth trajectory"
 
 class SyncItemSchema(BaseModel):
     client_event_id: str

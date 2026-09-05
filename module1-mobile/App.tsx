@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   TextInput
 } from 'react-native';
-import { apiClient, ApiCallStatus, getActiveHost, setActiveHost } from './src/api/apiClient';
+import { apiClient, getActiveHost, setActiveHost } from './src/api/apiClient';
 import {
   HouseholdSummary,
   HouseholdCareLedger,
   VisitDraft,
-  ConfirmedVisit
+  ConfirmedVisit,
+  MissingFieldPrompt
 } from './src/types';
 
 export default function App() {
@@ -26,19 +27,20 @@ export default function App() {
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [isCallingApi, setIsCallingApi] = useState<boolean>(false);
 
-  // Core ASHA Workflow State
+  // Core ASHA Platform State
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [selectedHousehold, setSelectedHousehold] = useState<HouseholdSummary | null>(null);
   const [careLedger, setCareLedger] = useState<HouseholdCareLedger | null>(null);
 
-  // Voice Interaction State
+  // Conversational Survey & Voice Interaction State
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState<boolean>(false);
   const [visitDraft, setVisitDraft] = useState<VisitDraft | null>(null);
+  const [isResolvingPrompt, setIsResolvingPrompt] = useState<boolean>(false);
   const [syncQueueCount, setSyncQueueCount] = useState<number>(1);
-  const [lastActionMessage, setLastActionMessage] = useState<string>('Ready for field visits');
+  const [lastActionMessage, setLastActionMessage] = useState<string>('Ready for conversational surveys');
 
-  // Perform Initial Load & Basic Call
+  // Initial Load
   useEffect(() => {
     runBasicCall();
   }, []);
@@ -50,8 +52,8 @@ export default function App() {
     setIsBackendConnected(!healthResult.isMockFallback);
     setBackendStatus(
       healthResult.isMockFallback
-        ? 'Offline Mode (Local Mock Active)'
-        : 'Connected to Module 3 Server (Port 8000)'
+        ? 'Offline Mode (Local Engine Active)'
+        : 'Connected to Central Backend (Port 8000)'
     );
 
     // 2. Fetch households
@@ -67,27 +69,43 @@ export default function App() {
     setIsCallingApi(false);
   };
 
-  // Simulate Voice Capture & Extraction (Module 1 -> Module 2)
+  // 1. Conversational Voice Survey Capture (Natural Speech -> ASR -> Auto Extraction)
   const handleSimulateVoiceCapture = async () => {
     if (!selectedHousehold) return;
     setIsRecording(true);
-    setLastActionMessage('Listening to Malayalam narrative...');
+    setLastActionMessage('Listening to natural Malayalam field conversation...');
 
-    // Simulate 2 seconds of speaking
     setTimeout(async () => {
       setIsRecording(false);
       setIsProcessingVoice(true);
-      setLastActionMessage('Processing speech via Malayalam ASR & extracting clinical entities...');
+      setLastActionMessage('Converting speech via Malayalam ASR & auto-extracting survey fields...');
 
-      // Basic Call to Voice Intelligence
       const draftResult = await apiClient.processVoiceVisit('sample-visit-audio.wav');
       setVisitDraft(draftResult.data);
       setIsProcessingVoice(false);
-      setLastActionMessage('Voice extraction complete. Please review and confirm record.');
+      setLastActionMessage('Survey auto-populated. Check for missing information prompts.');
     }, 1800);
   };
 
-  // Worker Human-Confirmation Gate (No record is committed without worker consent)
+  // 2. Proactive Conversational Follow-up: Resolving Missing Fields via Voice Dialogue
+  const handleAnswerMissingPrompt = async (prompt: MissingFieldPrompt) => {
+    if (!visitDraft) return;
+    setIsResolvingPrompt(true);
+    setLastActionMessage(`Answering: "${prompt.question_text_ml}"...`);
+
+    const sampleSpokenAnswer = 'കുട്ടിക്ക് ദിവസവും പാലും മുട്ടയും കൊടുക്കാറുണ്ട്. പയറും നൽകുന്നുണ്ട്.';
+    const resolvedResult = await apiClient.resolveMissingField(
+      visitDraft,
+      prompt.question_id,
+      sampleSpokenAnswer
+    );
+
+    setVisitDraft(resolvedResult.data);
+    setIsResolvingPrompt(false);
+    setLastActionMessage('Missing information satisfied conversationally! Ready for review.');
+  };
+
+  // 3. Human Confirmation Gate & Central Submission
   const handleConfirmVisit = async () => {
     if (!visitDraft || !selectedHousehold) return;
 
@@ -97,6 +115,8 @@ export default function App() {
       worker_id: visitDraft.worker_id,
       timestamp: new Date().toISOString(),
       person_updates: visitDraft.person_updates,
+      survey_fields: visitDraft.survey_fields,
+      malnutrition_assessment: visitDraft.malnutrition_assessment,
       confirmed_by_worker_at: new Date().toISOString(),
       sync_status: isBackendConnected ? 'synced' : 'pending'
     };
@@ -106,34 +126,37 @@ export default function App() {
     if (submitResult.isMockFallback) {
       setSyncQueueCount((prev) => prev + 1);
     }
-    setLastActionMessage(`Visit Confirmed! ${submitResult.message}`);
+    setLastActionMessage(`Survey Confirmed & Filed! ${submitResult.message}`);
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B3D2E" />
+      <StatusBar barStyle="light-content" backgroundColor="#064E3B" />
 
       {/* App Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>സ്വരം • SWARAM</Text>
-          <Text style={styles.headerSubtitle}>ASHA Field Voice Assistant (വാർഡ് 4, ആലുവ)</Text>
+          <Text style={styles.headerSubtitle}>Next-Gen ASHA Worker Platform (വാർഡ് 4, ആലുവ)</Text>
+          <View style={styles.conceptPill}>
+            <Text style={styles.conceptPillText}>🎙️ Conversational Survey & Care Intelligence</Text>
+          </View>
         </View>
         <View style={styles.syncBadge}>
           <Text style={styles.syncBadgeText}>
-            {syncQueueCount > 0 ? `⏳ ${syncQueueCount} Pending Sync` : '✓ All Synced'}
+            {syncQueueCount > 0 ? `⏳ ${syncQueueCount} Queued` : '✓ Synced'}
           </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Basic Call Connectivity Banner */}
+        {/* Network & Offline Status Banner */}
         <View style={[styles.networkBanner, isBackendConnected ? styles.bannerOnline : styles.bannerOffline]}>
           <View style={styles.bannerRow}>
             <View style={[styles.statusDot, isBackendConnected ? styles.dotGreen : styles.dotAmber]} />
             <View style={{ flex: 1 }}>
               <Text style={styles.bannerText}>
-                Backend: <Text style={{ fontWeight: 'bold' }}>{backendStatus}</Text>
+                System Mode: <Text style={{ fontWeight: 'bold' }}>{backendStatus}</Text>
               </Text>
               <Text style={styles.ipSubtitleText}>
                 Target: http://{serverIp}:8000
@@ -156,16 +179,16 @@ export default function App() {
               {isCallingApi ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.testCallButtonText}>Test Call</Text>
+                <Text style={styles.testCallButtonText}>Ping</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Dynamic IP Configuration Bar (Shown when IP button is tapped) */}
+        {/* IP Configuration Bar */}
         {showIpConfig && (
           <View style={styles.ipConfigCard}>
-            <Text style={styles.ipConfigLabel}>Configure Computer / Backend IP:</Text>
+            <Text style={styles.ipConfigLabel}>Configure Development Machine Host IP:</Text>
             <View style={styles.ipInputRow}>
               <TextInput
                 style={styles.ipInput}
@@ -186,13 +209,10 @@ export default function App() {
                 <Text style={styles.ipSaveButtonText}>Save & Test</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.ipHelpText}>
-              Note: Mobile phones cannot use "localhost". Your computer's current Wi-Fi IP is: <Text style={{ fontWeight: 'bold' }}>172.18.100.139</Text>
-            </Text>
           </View>
         )}
 
-        {/* Selected Household Overview Card */}
+        {/* Selected Household & History Overview Card */}
         {selectedHousehold && (
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
@@ -200,14 +220,21 @@ export default function App() {
                 <Text style={styles.cardTitle}>{selectedHousehold.head_of_household}</Text>
                 <Text style={styles.cardSubtitle}>{selectedHousehold.external_id} • {selectedHousehold.address}</Text>
               </View>
-              <View style={styles.priorityPill}>
-                <Text style={styles.priorityPillText}>Score: {selectedHousehold.priority_score}</Text>
+              <View style={styles.badgeColumn}>
+                <View style={styles.priorityPill}>
+                  <Text style={styles.priorityPillText}>Score: {selectedHousehold.priority_score}</Text>
+                </View>
+                <View style={styles.malnutritionBadge}>
+                  <Text style={styles.malnutritionBadgeText}>
+                    Nutrition: {selectedHousehold.malnutrition_risk || 'Moderate'}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            {/* Overdue/Care Gaps Alerts */}
+            {/* Overlooked Health Challenges / Urgent Care Gaps */}
             <View style={styles.alertBox}>
-              <Text style={styles.alertTitle}>ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ (Urgent Care Gaps):</Text>
+              <Text style={styles.alertTitle}>ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ (Longitudinal Care Needs):</Text>
               {selectedHousehold.priority_reasons.map((reason, idx) => (
                 <Text key={idx} style={styles.alertItem}>• {reason}</Text>
               ))}
@@ -215,11 +242,11 @@ export default function App() {
           </View>
         )}
 
-        {/* Voice Visit Capture Section */}
+        {/* Conversational Survey Capture Section */}
         <View style={styles.voiceSection}>
-          <Text style={styles.sectionHeading}>സന്ദർശനം രേഖപ്പെടുത്തുക (Record Visit)</Text>
+          <Text style={styles.sectionHeading}>സംഭാഷണ സർവേ (Conversational Survey Entry)</Text>
           <Text style={styles.instructionText}>
-            Speak natural Malayalam: Describe vitals, symptoms, medicine, and next visit date.
+            സ്വാഭാവിക സംഭാഷണം: രോഗവിവരങ്ങൾ, രക്തസമ്മർദ്ദം, കുട്ടിയുടെ പോഷകാഹാരം, മരുന്നുകൾ സംസാരിക്കുക. ടൈപ്പിംഗ് ആവശ്യമില്ല!
           </Text>
 
           <TouchableOpacity
@@ -238,55 +265,99 @@ export default function App() {
                 <Text style={styles.recordButtonText}>
                   {isRecording
                     ? 'റെക്കോർഡ് ചെയ്യുന്നു... (Tap to stop)'
-                    : 'സംസാരിക്കുക (Simulate Voice Visit)'}
+                    : 'സംസാരിക്കുക (Simulate Voice Survey)'}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Clinical Extraction Review & Confirmation Gate */}
+        {/* Proactive Missing Information Dialogue Card */}
+        {visitDraft && visitDraft.missing_field_prompts && visitDraft.missing_field_prompts.length > 0 && (
+          <View style={styles.missingPromptCard}>
+            <View style={styles.promptHeader}>
+              <Text style={styles.promptBadge}>❓ അപൂർണ്ണ വിവരങ്ങൾ (Missing Survey Information)</Text>
+              <Text style={styles.promptCount}>{visitDraft.missing_field_prompts.length} Action Needed</Text>
+            </View>
+            <Text style={styles.promptSubtext}>
+              സർവേ പൂർത്തിയാക്കാൻ Swaram ചോദിക്കുന്ന വിവരങ്ങൾ താഴെ മറുപടി നൽകി പൂർത്തിയാക്കുക:
+            </Text>
+
+            {visitDraft.missing_field_prompts.map((prompt) => (
+              <View key={prompt.question_id} style={styles.promptBox}>
+                <Text style={styles.promptQuestionMl}>🗣️ "{prompt.question_text_ml}"</Text>
+                <Text style={styles.promptQuestionEn}>{prompt.question_text_en}</Text>
+
+                <TouchableOpacity
+                  style={styles.answerButton}
+                  onPress={() => handleAnswerMissingPrompt(prompt)}
+                  disabled={isResolvingPrompt}
+                >
+                  {isResolvingPrompt ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.answerButtonText}>
+                      🎙️ മറുപടി പറയുക (Answer: "പാലും മുട്ടയും കൊടുക്കാറുണ്ട്")
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Swaram Survey Review Screen (Review Card) */}
         {visitDraft && (
           <View style={styles.confirmationCard}>
             <View style={styles.confHeader}>
-              <Text style={styles.confBadge}>തിരിച്ചറിഞ്ഞ വിവരങ്ങൾ (Extracted Record)</Text>
+              <Text style={styles.confBadge}>📋 ശൈലി സർവേ അവലോകനം (Survey Review Card)</Text>
               <Text style={styles.confConfidence}>Confidence: {(visitDraft.confidence * 100).toFixed(0)}%</Text>
             </View>
 
             <Text style={styles.transcriptSnippet}>
-              🗣️ മലയാളം സംഗ്രഹം: "{visitDraft.transcript}"
+              🗣️ സംസാരിച്ചത്: "{visitDraft.transcript}"
             </Text>
 
-            {visitDraft.person_updates.map((update, idx) => (
-              <View key={idx} style={styles.extractedTable}>
-                <Text style={styles.tableRow}><Text style={styles.bold}>വ്യക്തി (Person):</Text> {update.name}</Text>
-                {update.vitals && (
-                  <>
-                    <Text style={styles.tableRow}>
-                      <Text style={styles.bold}>രക്തസമ്മർദ്ദം (BP):</Text> {update.vitals.systolic_bp}/{update.vitals.diastolic_bp} mmHg
+            {/* Extracted Survey Fields Table */}
+            <View style={styles.surveyTable}>
+              <Text style={styles.surveySectionTitle}>രേഖപ്പെടുത്തിയ സർവേ വിവരങ്ങൾ (Extracted Survey Responses):</Text>
+              {visitDraft.survey_fields && visitDraft.survey_fields.map((field, idx) => (
+                <View key={idx} style={styles.surveyRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>{field.question_ml} ({field.question_en})</Text>
+                    <Text style={[styles.fieldValue, field.status === 'missing' ? styles.fieldMissing : styles.fieldFilled]}>
+                      {field.value}
                     </Text>
-                    <Text style={styles.tableRow}>
-                      <Text style={styles.bold}>ശരീരഭാരം (Weight):</Text> {update.vitals.weight_kg} kg
+                  </View>
+                  <View style={[styles.fieldPill, field.status === 'clarified_conversationally' ? styles.pillClarified : styles.pillExtracted]}>
+                    <Text style={styles.fieldPillText}>
+                      {field.status === 'clarified_conversationally' ? 'Clarified' : 'Extracted'}
                     </Text>
-                  </>
-                )}
-                {update.medications_given && (
-                  <Text style={styles.tableRow}>
-                    <Text style={styles.bold}>നൽകിയ മരുന്നുകൾ:</Text> {update.medications_given.join(', ')}
-                  </Text>
-                )}
-                {update.follow_up_date && (
-                  <Text style={styles.tableRow}>
-                    <Text style={styles.bold}>അടുത്ത സന്ദർശനം:</Text> {update.follow_up_date}
-                  </Text>
-                )}
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Malnutrition Assessment Highlight */}
+            {visitDraft.malnutrition_assessment && (
+              <View style={styles.malnutritionReviewBox}>
+                <Text style={styles.malReviewTitle}>🌱 പോഷകാഹാര നിരീക്ഷണം (Malnutrition Screening):</Text>
+                <Text style={styles.malReviewText}>
+                  • Dietary Diversity: {visitDraft.malnutrition_assessment.dietary_diversity_score || 3}/8 food groups
+                </Text>
+                <Text style={styles.malReviewText}>
+                  • MUAC (Arm Circumference): {visitDraft.malnutrition_assessment.muac_cm || 12.8} cm (Normal)
+                </Text>
+                <Text style={styles.malReviewText}>
+                  • Risk Category: {visitDraft.malnutrition_assessment.risk_level.toUpperCase()}
+                </Text>
               </View>
-            ))}
+            )}
 
             {/* Confirmation Gate Buttons */}
             <View style={styles.confActions}>
               <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmVisit}>
-                <Text style={styles.confirmButtonText}>✓ ശരിയാണ് (Confirm & Save)</Text>
+                <Text style={styles.confirmButtonText}>✓ വിവരങ്ങൾ സ്ഥിരീകരിച്ച് സമർപ്പിക്കുക (Confirm & Submit)</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -298,17 +369,28 @@ export default function App() {
           </View>
         )}
 
-        {/* Unresolved Care Ledger Section */}
+        {/* Unresolved Care Ledger & Malnutrition Memory Section */}
         {careLedger && (
           <View style={styles.ledgerCard}>
-            <Text style={styles.sectionHeading}>Unresolved Care Ledger ({careLedger.care_gaps.length} Open)</Text>
+            <View style={styles.ledgerHeaderRow}>
+              <Text style={styles.sectionHeading}>Unresolved Care Ledger</Text>
+              <Text style={styles.ledgerCountPill}>{careLedger.care_gaps.length} Active Items</Text>
+            </View>
+
             <Text style={styles.ledgerNarrative}>{careLedger.longitudinal_narrative}</Text>
+
+            {careLedger.malnutrition_trend && (
+              <View style={styles.trendBox}>
+                <Text style={styles.trendTitle}>📊 Malnutrition Longitudinal Trend:</Text>
+                <Text style={styles.trendText}>{careLedger.malnutrition_trend}</Text>
+              </View>
+            )}
 
             {careLedger.care_gaps.map((gap) => (
               <View key={gap.id} style={styles.gapItem}>
                 <View style={styles.gapHeader}>
                   <Text style={styles.gapProgramme}>[{gap.programme.toUpperCase()}]</Text>
-                  <Text style={styles.gapSeverity}>{gap.severity}</Text>
+                  <Text style={styles.gapSeverity}>{gap.severity.toUpperCase()}</Text>
                 </View>
                 <Text style={styles.gapDescription}>{gap.description}</Text>
                 <Text style={styles.gapAction}>Action: {gap.recommended_action}</Text>
@@ -319,7 +401,7 @@ export default function App() {
 
         {/* Status Message Footer */}
         <View style={styles.footerNote}>
-          <Text style={styles.footerText}>⚡ System Status: {lastActionMessage}</Text>
+          <Text style={styles.footerText}>⚡ Swaram Next-Gen Status: {lastActionMessage}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -332,7 +414,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6'
   },
   header: {
-    backgroundColor: '#0B3D2E',
+    backgroundColor: '#064E3B',
     paddingHorizontal: 20,
     paddingVertical: 16,
     flexDirection: 'row',
@@ -350,8 +432,21 @@ const styles = StyleSheet.create({
     color: '#A7F3D0',
     marginTop: 2
   },
-  syncBadge: {
+  conceptPill: {
     backgroundColor: '#065F46',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 4,
+    alignSelf: 'flex-start'
+  },
+  conceptPillText: {
+    color: '#E6FFFA',
+    fontSize: 10,
+    fontWeight: '600'
+  },
+  syncBadge: {
+    backgroundColor: '#047857',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 14
@@ -417,7 +512,7 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   testCallButton: {
-    backgroundColor: '#0B3D2E',
+    backgroundColor: '#064E3B',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6
@@ -467,11 +562,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold'
   },
-  ipHelpText: {
-    fontSize: 10,
-    color: '#6B7280',
-    marginTop: 6
-  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -498,16 +588,31 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2
   },
+  badgeColumn: {
+    alignItems: 'flex-end',
+    gap: 4
+  },
   priorityPill: {
     backgroundColor: '#FEE2E2',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 12
   },
   priorityPillText: {
     color: '#B91C1C',
     fontSize: 11,
     fontWeight: 'bold'
+  },
+  malnutritionBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10
+  },
+  malnutritionBadgeText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '700'
   },
   alertBox: {
     marginTop: 12,
@@ -556,7 +661,7 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   recordButtonIdle: {
-    backgroundColor: '#0B3D2E'
+    backgroundColor: '#064E3B'
   },
   recordButtonActive: {
     backgroundColor: '#DC2626'
@@ -573,6 +678,70 @@ const styles = StyleSheet.create({
   recordButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: 'bold'
+  },
+  missingPromptCard: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16
+  },
+  promptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  promptBadge: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#B45309'
+  },
+  promptCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#D97706',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8
+  },
+  promptSubtext: {
+    fontSize: 12,
+    color: '#78350F',
+    marginBottom: 12
+  },
+  promptBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    borderColor: '#FDE68A',
+    borderWidth: 1
+  },
+  promptQuestionMl: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#92400E',
+    marginBottom: 4
+  },
+  promptQuestionEn: {
+    fontSize: 12,
+    color: '#78350F',
+    fontStyle: 'italic',
+    marginBottom: 10
+  },
+  answerButton: {
+    backgroundColor: '#D97706',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  answerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: 'bold'
   },
   confirmationCard: {
@@ -608,26 +777,81 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 13
   },
-  extractedTable: {
+  surveyTable: {
     backgroundColor: '#F9FAFB',
+    borderRadius: 8,
     padding: 10,
-    borderRadius: 6,
     marginBottom: 12
   },
-  tableRow: {
+  surveySectionTitle: {
     fontSize: 13,
-    color: '#1F2937',
-    marginVertical: 2
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8
   },
-  bold: {
-    fontWeight: 'bold'
+  surveyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB'
+  },
+  fieldLabel: {
+    fontSize: 11,
+    color: '#4B5563'
+  },
+  fieldValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2
+  },
+  fieldFilled: {
+    color: '#111827'
+  },
+  fieldMissing: {
+    color: '#DC2626',
+    fontStyle: 'italic'
+  },
+  fieldPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8
+  },
+  pillExtracted: {
+    backgroundColor: '#E0F2FE'
+  },
+  pillClarified: {
+    backgroundColor: '#DCFCE7'
+  },
+  fieldPillText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#0369A1'
+  },
+  malnutritionReviewBox: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12
+  },
+  malReviewTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#B45309',
+    marginBottom: 4
+  },
+  malReviewText: {
+    fontSize: 12,
+    color: '#78350F',
+    marginVertical: 1
   },
   confActions: {
     flexDirection: 'row',
     gap: 10
   },
   confirmButton: {
-    flex: 2,
+    flex: 3,
     backgroundColor: '#059669',
     paddingVertical: 12,
     borderRadius: 8,
@@ -636,7 +860,7 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    fontSize: 14
+    fontSize: 13
   },
   cancelButton: {
     flex: 1,
@@ -648,13 +872,27 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#374151',
     fontWeight: '600',
-    fontSize: 14
+    fontSize: 13
   },
   ledgerCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16
+  },
+  ledgerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  ledgerCountPill: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#B45309'
   },
   ledgerNarrative: {
     fontSize: 12,
@@ -664,6 +902,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     padding: 10,
     borderRadius: 6
+  },
+  trendBox: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 8
+  },
+  trendTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#1D4ED8'
+  },
+  trendText: {
+    fontSize: 11,
+    color: '#1E40AF',
+    marginTop: 2
   },
   gapItem: {
     borderLeftWidth: 3,

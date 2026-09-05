@@ -9,6 +9,7 @@ export interface HouseholdSummary {
   open_care_gaps: number;
   priority_score: number;
   priority_reasons: string[];
+  malnutrition_risk?: string;
 }
 
 export interface AudioRecordingState {

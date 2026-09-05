@@ -1,21 +1,23 @@
-# Module 3: Household Data, OCR & Care Ledger
+# Module 3: Household Data, OCR & Longitudinal Care Ledger
+### Swaram Next-Generation ASHA Platform Data Backbone
 
 **Assigned Teammate:** Member 3 (Backend, Data & OCR Engineer)  
-**Tech Stack:** Python 3.10+, FastAPI, SQLite/PostgreSQL, SQLAlchemy, Pydantic, PaddleOCR/Tesseract
+**Tech Stack:** Python 3.10+, FastAPI, SQLite/PostgreSQL/MongoDB, Pydantic, PaddleOCR/Tesseract
 
 ---
 
 ## 🎯 Purpose & Responsibilities
-This module is the canonical data backbone for the entire Swaram platform:
-1. **Canonical Records:** Persists Household, Person, Visit, Observation, and CareGap entities.
-2. **Offline Synchronisation (`POST /api/v1/sync/push`):** Idempotent ingestion of offline client queues using client-generated UUIDs.
-3. **Paper Register OCR (`services/ocr_service.py`):** Parses photographed paper ASHA registers into structured rows with match confidence against registered households.
-4. **Unresolved Care Ledger (`routers/care_ledger.py`):** Persistent household-level ledger of open care gaps across Maternal, Child, NCD, and Nutrition programmes.
-5. **Longitudinal Narrative Generator (`services/narrative_service.py`):** Generates human-readable progress summaries for the ASHA worker before every household visit.
+This module is the canonical health data backbone for the Swaram platform:
+1. **Canonical Records:** Persists Household, Person, Visit, Survey, and Malnutrition screening entities.
+2. **Longitudinal Care Ledger (`routers/care_ledger.py`):** Persistent household-level memory tracking active, open, and resolved care gaps across Maternal, Child, Nutrition/Malnutrition, and NCD programmes.
+3. **Malnutrition & Growth Monitoring:** Tracks childhood growth trajectories, dietary diversity scores, MUAC indicators, and maternal nutritional anemia across household visits.
+4. **Offline Synchronisation (`POST /api/v1/sync/push`):** Idempotent ingestion of offline client queues using client-generated UUIDs.
+5. **Longitudinal Narrative Generator (`services/narrative_service.py`):** Generates human-readable progress summaries and next-visit priority checklists for the ASHA worker before every household visit.
+6. **Paper Register OCR (`services/ocr_service.py`):** Parses photographed paper ASHA registers into structured rows with match confidence against registered households.
 
 ---
 
-## 🚀 Quick Start for Member 3
+## 🚀 Quick Start
 
 ```bash
 cd module3-backend-ocr-ledger
@@ -41,43 +43,15 @@ Interactive Swagger docs: **`http://localhost:8000/docs`**.
 curl http://localhost:8000/health
 ```
 
-### 2. Fetch Care Ledger:
+### 2. Fetch Household Care Ledger:
 ```bash
 curl http://localhost:8000/api/v1/ledger/h-lakshmi-001
 ```
+Returns open care gaps, longitudinal narrative, and malnutrition trends.
 
-### 3. Test Offline Sync Push:
+### 3. Record Confirmed Visit:
 ```bash
-curl -X POST http://localhost:8000/api/v1/sync/push \
+curl -X POST http://localhost:8000/api/v1/visits \
   -H "Content-Type: application/json" \
-  -d '{"device_id":"dev-01","items":[{"client_event_id":"evt-101","entity":"visit","operation":"create","payload":{}}]}'
+  -d '{"visit_id":"v-101","household_id":"h-lakshmi-001","worker_id":"w-01","timestamp":"2026-09-05T10:00:00Z","person_updates":[],"confirmed_by_worker_at":"2026-09-05T10:00:00Z"}'
 ```
-
----
-
-## 📂 Directory Layout
-```
-module3-backend-ocr-ledger/
-├── requirements.txt
-├── README.md
-└── app/
-    ├── main.py                  # Server entry point (port 8000)
-    ├── models/
-    │   └── schemas.py           # Pydantic models matching contracts
-    ├── routers/
-    │   ├── households.py        # /api/v1/households
-    │   ├── visits.py            # /api/v1/visits
-    │   ├── sync.py              # /api/v1/sync/push
-    │   ├── care_ledger.py       # /api/v1/ledger
-    │   └── ocr.py               # /api/v1/ocr
-    └── services/
-        ├── narrative_service.py # Longitudinal narrative generator
-        └── ocr_service.py       # Paper register table parser
-```
-
----
-
-## 🤝 Frozen Contracts Used
-- Implements: [`contracts/care_ledger.schema.json`](../contracts/care_ledger.schema.json)
-- Consumes: [`contracts/visit.schema.json`](../contracts/visit.schema.json)
-- OCR Output: [`contracts/ocr.schema.json`](../contracts/ocr.schema.json)

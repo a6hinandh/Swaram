@@ -55,8 +55,7 @@ export interface ApiCallStatus<T> {
 
 export const apiClient = {
   /**
-   * Basic Call 1: Backend Health Check
-   * Pings the Module 3 FastAPI backend to verify connectivity
+   * Health Check: Pings Module 3 FastAPI backend
    */
   async checkBackendHealth(): Promise<ApiCallStatus<{ status: string; service: string }>> {
     const baseUrl = getBackendBaseUrl();
@@ -86,7 +85,7 @@ export const apiClient = {
   },
 
   /**
-   * Basic Call 2: Fetch Today's Households
+   * Fetch Assigned Households with Priority & Malnutrition Indicators
    */
   async getHouseholds(): Promise<ApiCallStatus<HouseholdSummary[]>> {
     try {
@@ -114,7 +113,7 @@ export const apiClient = {
   },
 
   /**
-   * Basic Call 3: Get Household Unresolved Care Ledger
+   * Get Household Unresolved Care Ledger (Longitudinal history & malnutrition trends)
    */
   async getCareLedger(householdId: string): Promise<ApiCallStatus<HouseholdCareLedger>> {
     try {
@@ -142,12 +141,11 @@ export const apiClient = {
   },
 
   /**
-   * Basic Call 4: Process Voice Visit (Audio -> Malayalam ASR -> Structured Extraction)
-   * Sends audio payload to Module 2 Voice Intelligence
+   * Process Voice Survey: Natural Speech -> ASR -> Survey & Malnutrition Extraction
    */
   async processVoiceVisit(audioUri?: string): Promise<ApiCallStatus<VisitDraft>> {
     try {
-      const response = await fetch(`${getVoiceBaseUrl()}/voice/process`, {
+      const response = await fetch(`${getVoiceBaseUrl()}/voice/process-survey`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audio_uri: audioUri, language: 'ml' }),
@@ -158,23 +156,74 @@ export const apiClient = {
         return {
           data: json,
           isMockFallback: false,
-          message: 'Voice processing completed via Module 2 AI Service.',
+          message: 'Voice survey extraction completed via Module 2 AI Service.',
           statusCode: response.status
         };
       }
       throw new Error(`HTTP ${response.status}`);
     } catch {
-      // Return representative Malayalam visit draft
       return {
         data: MOCK_VISIT_DRAFT_RESPONSE,
         isMockFallback: true,
-        message: 'Simulated voice extraction using local Malayalam contract.'
+        message: 'Simulated voice extraction using local contract.'
       };
     }
   },
 
   /**
-   * Basic Call 5: Submit Confirmed Clinical Visit
+   * Proactive Missing Information Inquiry:
+   * Resolves a missing survey field using the worker's spoken conversational reply
+   */
+  async resolveMissingField(
+    draft: VisitDraft,
+    questionId: string,
+    answerText: string
+  ): Promise<ApiCallStatus<VisitDraft>> {
+    try {
+      const response = await fetch(`${getVoiceBaseUrl()}/voice/resolve-missing-field`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft, question_id: questionId, answer_text: answerText }),
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Missing survey field resolved conversationally.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch {
+      // Local fallback resolution
+      const updatedDraft = JSON.parse(JSON.stringify(draft)) as VisitDraft;
+      if (updatedDraft.survey_fields) {
+        for (const sf of updatedDraft.survey_fields) {
+          if (sf.field_key === 'dietary_diversity') {
+            sf.value = 'Adequate (Milk, Eggs & Pulses confirmed)';
+            sf.status = 'clarified_conversationally';
+          }
+        }
+      }
+      if (updatedDraft.malnutrition_assessment) {
+        updatedDraft.malnutrition_assessment.dietary_diversity_score = 5;
+        updatedDraft.malnutrition_assessment.risk_level = 'normal';
+      }
+      updatedDraft.missing_field_prompts = (updatedDraft.missing_field_prompts || []).filter(
+        p => p.question_id !== questionId
+      );
+      return {
+        data: updatedDraft,
+        isMockFallback: true,
+        message: 'Resolved missing field locally (Offline fallback).'
+      };
+    }
+  },
+
+  /**
+   * Submit Confirmed Survey & Clinical Visit to Central System
    */
   async submitConfirmedVisit(visit: ConfirmedVisit): Promise<ApiCallStatus<{ status: string; id: string }>> {
     try {
@@ -189,7 +238,7 @@ export const apiClient = {
         return {
           data: json,
           isMockFallback: false,
-          message: 'Visit synced to server.',
+          message: 'Survey encounter synced to central database.',
           statusCode: response.status
         };
       }
