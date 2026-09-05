@@ -49,7 +49,7 @@ def health():
         "status": "ok",
         "service": "module2-voice-intelligence",
         "platform": "Swaram Next-Gen ASHA Platform",
-        "model_adapters": ["IndicConformer", "IndicF5"],
+        "model_adapters": ["SarvamAI-Saaras-v4", "IndicConformer", "IndicF5"],
         "capabilities": [
             "Malayalam Voice Survey Extraction",
             "Malnutrition Screening",

@@ -18,7 +18,12 @@ import {
   MissingFieldPrompt
 } from './src/types';
 import { audioRecorder } from './src/services/audioRecorder';
-import { transcribeWithIndicConformer } from './src/services/indicConformerService';
+import {
+  transcribeWithIndicConformer,
+  transcribeWithSarvamAI,
+  getCustomSarvamApiKey,
+  setCustomSarvamApiKey,
+} from './src/services/indicConformerService';
 import { QUICK_CORRECTION_SUGGESTIONS } from './src/services/malayalamSpellCorrector';
 import { StructuredClinicalRecord } from './src/types/structuredClinicalRecord';
 import { extractStructuredClinicalRecord } from './src/services/clinicalEntityExtractor';
@@ -76,14 +81,24 @@ export default function App() {
   const [isGeminiRefining, setIsGeminiRefining] = useState<boolean>(false);
   const [geminiStatusNote, setGeminiStatusNote] = useState<string | null>(null);
   const [showApiKeyConfig, setShowApiKeyConfig] = useState<boolean>(false);
+  const [sarvamApiKeyInput, setSarvamApiKeyInput] = useState<string>(getCustomSarvamApiKey());
+  const [showSarvamKeyPlaintext, setShowSarvamKeyPlaintext] = useState<boolean>(false);
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState<string>(getCustomGeminiApiKey());
   const [showKeyPlaintext, setShowKeyPlaintext] = useState<boolean>(false);
   const [showZScoreModal, setShowZScoreModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AppTab>('core');
 
+  const handleSaveSarvamKey = () => {
+    setCustomSarvamApiKey(sarvamApiKeyInput);
+    setLastActionMessage(
+      sarvamApiKeyInput.trim()
+        ? '✓ Sarvam AI Voice-to-Text Key configured (Saaras v4)!'
+        : 'Sarvam AI Key cleared.'
+    );
+  };
+
   const handleSaveGeminiKey = () => {
     setCustomGeminiApiKey(geminiApiKeyInput);
-    setShowApiKeyConfig(false);
     setLastActionMessage(
       geminiApiKeyInput.trim()
         ? '✓ Google Gemini API Key configured for Zero-PII Cloud Engine!'
@@ -149,16 +164,16 @@ export default function App() {
       }
       setIsRecording(false);
       setIsProcessingVoice(true);
-      setLastActionMessage('Passing audio to AI4Bharat IndicConformer ASR (Malayalam)...');
+      setLastActionMessage('Transcribing Malayalam audio with Sarvam AI (Saaras v4)...');
 
       try {
         const audio = await audioRecorder.stopRecording();
 
-        // 1. Transcribe with IndicConformer (strictly Malayalam)
+        // 1. Transcribe with Sarvam AI ASR (strictly Malayalam)
         const conformerResult = await transcribeWithIndicConformer(audio, 'ml');
 
         console.log('\n======================================================');
-        console.log('🗣️ AI4BHARAT INDICCONFORMER RAW TRANSCRIPTION (MALAYALAM):');
+        console.log('🗣️ SARVAM AI RAW TRANSCRIPTION (MALAYALAM):');
         console.log(conformerResult.transcript);
         console.log('======================================================\n');
 
@@ -464,47 +479,91 @@ export default function App() {
           </View>
         )}
 
-        {/* Gemini API Key Configuration Card */}
+        {/* AI Services API Key Configuration Card */}
         {showApiKeyConfig && (
           <View style={[styles.ipConfigCard, { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' }]}>
-            <Text style={[styles.ipConfigLabel, { color: '#5B21B6', fontWeight: 'bold' }]}>
-              🔑 Google Gemini API Key (Zero-PII Engine):
+            {/* Sarvam AI ASR Section */}
+            <Text style={[styles.ipConfigLabel, { color: '#047857', fontWeight: 'bold' }]}>
+              🎙️ Sarvam AI Voice-to-Text API Key (Malayalam Saaras v4):
             </Text>
-            <Text style={{ fontSize: 11, color: '#6D28D9', marginBottom: 6 }}>
-              Enables cloud accuracy for Malayalam speech. PII is sanitized on-device before sending.
+            <Text style={{ fontSize: 11, color: '#065F46', marginBottom: 6 }}>
+              Directly transcribes spoken Malayalam audio via Sarvam AI Saaras v4 foundation model.
             </Text>
             <View style={styles.ipInputRow}>
               <TextInput
-                style={[styles.ipInput, { borderColor: '#C4B5FD', flex: 1 }]}
-                value={geminiApiKeyInput}
-                onChangeText={setGeminiApiKeyInput}
-                placeholder="Paste AIzaSy... key here"
-                placeholderTextColor="#A78BFA"
-                secureTextEntry={!showKeyPlaintext}
+                style={[styles.ipInput, { borderColor: '#A7F3D0', flex: 1 }]}
+                value={sarvamApiKeyInput}
+                onChangeText={setSarvamApiKeyInput}
+                placeholder="Paste sk_... key here"
+                placeholderTextColor="#6EE7B7"
+                secureTextEntry={!showSarvamKeyPlaintext}
                 autoCapitalize="none"
               />
               <TouchableOpacity
-                style={[styles.ipSaveButton, { backgroundColor: '#7C3AED' }]}
-                onPress={handleSaveGeminiKey}
+                style={[styles.ipSaveButton, { backgroundColor: '#059669' }]}
+                onPress={handleSaveSarvamKey}
               >
-                <Text style={styles.ipSaveButtonText}>Save Key</Text>
+                <Text style={styles.ipSaveButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <TouchableOpacity onPress={() => setShowKeyPlaintext(!showKeyPlaintext)}>
-                <Text style={{ fontSize: 11, color: '#7C3AED', fontWeight: '600' }}>
-                  {showKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, marginBottom: 12 }}>
+              <TouchableOpacity onPress={() => setShowSarvamKeyPlaintext(!showSarvamKeyPlaintext)}>
+                <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
+                  {showSarvamKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
                 </Text>
               </TouchableOpacity>
-              {geminiApiKeyInput && geminiApiKeyInput.trim() ? (
+              {sarvamApiKeyInput && sarvamApiKeyInput.trim() ? (
                 <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
-                  ✓ Key Active ({geminiApiKeyInput.slice(0, 6)}...{geminiApiKeyInput.slice(-4)})
+                  ✓ Sarvam Active ({sarvamApiKeyInput.slice(0, 6)}...{sarvamApiKeyInput.slice(-4)})
                 </Text>
               ) : (
                 <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
-                  ⚠️ No key set (Uses Local Extractor)
+                  ⚠️ No key set (Fallback mode)
                 </Text>
               )}
+            </View>
+
+            {/* Gemini Intelligence Section */}
+            <View style={{ borderTopWidth: 1, borderTopColor: '#DDD6FE', paddingTop: 10 }}>
+              <Text style={[styles.ipConfigLabel, { color: '#5B21B6', fontWeight: 'bold' }]}>
+                🔑 Google Gemini API Key (Zero-PII Engine):
+              </Text>
+              <Text style={{ fontSize: 11, color: '#6D28D9', marginBottom: 6 }}>
+                Contextual refinement & structured medical extraction. PII is sanitized on-device.
+              </Text>
+              <View style={styles.ipInputRow}>
+                <TextInput
+                  style={[styles.ipInput, { borderColor: '#C4B5FD', flex: 1 }]}
+                  value={geminiApiKeyInput}
+                  onChangeText={setGeminiApiKeyInput}
+                  placeholder="Paste AIzaSy... key here"
+                  placeholderTextColor="#A78BFA"
+                  secureTextEntry={!showKeyPlaintext}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={[styles.ipSaveButton, { backgroundColor: '#7C3AED' }]}
+                  onPress={handleSaveGeminiKey}
+                >
+                  <Text style={styles.ipSaveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <TouchableOpacity onPress={() => setShowKeyPlaintext(!showKeyPlaintext)}>
+                  <Text style={{ fontSize: 11, color: '#7C3AED', fontWeight: '600' }}>
+                    {showKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
+                  </Text>
+                </TouchableOpacity>
+                {geminiApiKeyInput && geminiApiKeyInput.trim() ? (
+                  <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
+                    ✓ Key Active ({geminiApiKeyInput.slice(0, 6)}...{geminiApiKeyInput.slice(-4)})
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
+                    ⚠️ No key set (Local Extractor)
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
         )}

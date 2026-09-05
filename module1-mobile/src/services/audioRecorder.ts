@@ -1,7 +1,7 @@
 /**
  * Universal Audio Recorder for Swaram React Native App
- * Captures raw 16kHz PCM audio and encodes standard WAV format
- * for direct compatibility with Hugging Face Whisper and AI4Bharat.
+ * Captures raw 16kHz audio and encodes standard WAV/M4A format
+ * for direct compatibility with Sarvam AI (Saaras v4), Hugging Face, and AI4Bharat.
  */
 
 import { Platform } from 'react-native';

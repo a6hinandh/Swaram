@@ -164,7 +164,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
       }
       setIsRecording(false);
       setIsProcessingVoice(true);
-      setVoiceStatusMsg('AI4Bharat IndicConformer ശബ്ദരേഖ തയ്യാറാക്കുന്നു...');
+      setVoiceStatusMsg('Sarvam AI ശബ്ദരേഖ തയ്യാറാക്കുന്നു...');
 
       try {
         const audio = await audioRecorder.stopRecording();
@@ -175,7 +175,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
         // Auto-extract and populate CBAC checklist from transcript
         const autoExtracted = extractCbacFromTranscript(capturedText, record);
         refreshScores(autoExtracted);
-        setVoiceStatusMsg('✓ ശബ്ദരേഖയിൽ നിന്ന് CBAC ചോദ്യാവലി സ്വയമേവ പൂരിപ്പിച്ചു!');
+        setVoiceStatusMsg('✓ Sarvam AI ശബ്ദരേഖയിൽ നിന്ന് CBAC ചോദ്യാവലി സ്വയമേവ പൂരിപ്പിച്ചു!');
       } catch (err: any) {
         console.warn('ASR / Extraction error:', err);
         setVoiceStatusMsg(`പ്രോസസ്സിംഗ് തടസ്സപ്പെട്ടു: ${err.message}`);
