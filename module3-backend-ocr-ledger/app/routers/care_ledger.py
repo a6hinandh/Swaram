@@ -1,17 +1,42 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from datetime import datetime
-from models.schemas import HouseholdCareLedgerSchema
+from models.schemas import HouseholdCareLedgerSchema, CareGapSchema
 from services.narrative_service import NarrativeService
+from db.database import care_ledgers_col, vitals_baselines_col
 
 router = APIRouter(prefix="/api/v1/ledger", tags=["Care Ledger"])
 
 @router.get("/{household_id}", response_model=HouseholdCareLedgerSchema)
 def get_care_ledger(household_id: str):
     """
-    Returns the persistent household Unresolved Care Ledger across all programmes
-    including malnutrition monitoring and longitudinal health history.
+    Returns the persistent household Unresolved Care Ledger from MongoDB across all programmes
+    including longitudinal vitals baselines, malnutrition monitoring, and clinical history.
     """
+    if care_ledgers_col is not None:
+        try:
+            doc = care_ledgers_col.find_one({"household_id": household_id}, {"_id": 0})
+            if doc:
+                return doc
+        except Exception as e:
+            print(f"[MongoDB Error in get_care_ledger] {e}")
+
+    # Fallback default ledger
     sample_gaps = [
+        {
+            "id": "gap-vitals-spurt-01",
+            "household_id": household_id,
+            "person_id": "p-radhamani-01",
+            "programme": "ncd",
+            "gap_type": "vitals_delta_hypertensive_spurt",
+            "description": "Acute systolic BP spurt (+28 mmHg from personal baseline 120/80 mmHg).",
+            "evidence": [{"source_type": "visit_vitals_deviation", "observed_at": datetime.utcnow().isoformat() + "Z"}],
+            "severity": "high",
+            "status": "open",
+            "due_date": "2026-09-07",
+            "owner": "ASHA Worker (Ward 4)",
+            "recommended_action": "Home visit within 48h: verify anti-hypertensive drug adherence and re-measure BP.",
+            "last_reviewed_at": datetime.utcnow().isoformat() + "Z"
+        },
         {
             "id": "gap-anc-01",
             "household_id": household_id,
@@ -26,36 +51,6 @@ def get_care_ledger(household_id: str):
             "owner": "ASHA Worker (Ward 4)",
             "recommended_action": "Measure vitals, check for pedal edema, schedule PHC review",
             "last_reviewed_at": datetime.utcnow().isoformat() + "Z"
-        },
-        {
-            "id": "gap-imm-02",
-            "household_id": household_id,
-            "person_id": "p-rahul-02",
-            "programme": "child_immunisation",
-            "gap_type": "mr_vaccine_unconfirmed",
-            "description": "Measles-Rubella vaccine status at 16-24 months unverified in MCP card.",
-            "evidence": [{"source_type": "paper_register_scan", "observed_at": "2026-08-15T09:00:00Z"}],
-            "severity": "medium",
-            "status": "needs_information",
-            "due_date": "2026-09-10",
-            "owner": "ASHA Worker (Ward 4)",
-            "recommended_action": "Inspect MCP card or confirm date from mother",
-            "last_reviewed_at": datetime.utcnow().isoformat() + "Z"
-        },
-        {
-            "id": "gap-nut-03",
-            "household_id": household_id,
-            "person_id": "p-rahul-02",
-            "programme": "malnutrition",
-            "gap_type": "child_malnutrition_risk",
-            "description": "Dietary diversity score low (3/8). Child requires egg and milk protein supplementation.",
-            "evidence": [{"source_type": "visit_observation", "observed_at": "2026-09-01T11:00:00Z"}],
-            "severity": "medium",
-            "status": "open",
-            "due_date": "2026-09-15",
-            "owner": "ASHA Worker (Ward 4)",
-            "recommended_action": "Counsel mother on dietary diversity, egg/milk intake, and verify MUAC",
-            "last_reviewed_at": datetime.utcnow().isoformat() + "Z"
         }
     ]
 
@@ -64,25 +59,67 @@ def get_care_ledger(household_id: str):
         recent_visits=[],
         open_gaps=sample_gaps,
         malnutrition_context={
-            "dietary_diversity_score": 4,
-            "muac_cm": 12.8,
-            "wasting_status": "normal",
+            "dietary_diversity_score": 3,
+            "muac_cm": 12.6,
+            "wasting_status": "moderate_wasting",
             "maternal_anemia_flag": True
         }
     )
 
-    return HouseholdCareLedgerSchema(
+    ledger = HouseholdCareLedgerSchema(
         household_id=household_id,
         household_name="Lakshmi Household",
         updated_at=datetime.utcnow().isoformat() + "Z",
         open_gaps_count=len(sample_gaps),
         care_gaps=sample_gaps,
-        priority_score=88.5,
+        priority_score=92.5,
         priority_reasons=[
-            "ANC 3rd trimester check overdue by 8 days",
-            "Child immunisation (MR vaccine) pending confirmation",
-            "Child dietary diversity low (Malnutrition monitoring active)"
+            "Acute hypertensive spurt detected in Radhamani P. (+28 mmHg)",
+            "Pediatric weight faltering flagged in child Rahul",
+            "ANC 3rd trimester check overdue by 8 days"
         ],
         longitudinal_narrative=narrative,
-        malnutrition_trend="Moderate vulnerability - Dietary diversity monitoring ongoing"
+        malnutrition_trend="High vulnerability - Pediatric weight loss and dietary diversity deficit active"
     )
+
+    if care_ledgers_col is not None:
+        try:
+            care_ledgers_col.update_one(
+                {"household_id": household_id},
+                {"$set": ledger.dict()},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"[MongoDB Error caching ledger] {e}")
+
+    return ledger
+
+@router.post("/{household_id}/gaps", response_model=HouseholdCareLedgerSchema)
+def add_care_gap_to_ledger(household_id: str, gap: CareGapSchema):
+    """Adds or updates an active CareGap in the household's MongoDB Care Ledger."""
+    gap_data = gap.dict()
+
+    if care_ledgers_col is not None:
+        try:
+            care_ledgers_col.update_one(
+                {"household_id": household_id},
+                {
+                    "$pull": {"care_gaps": {"id": gap.id}}
+                }
+            )
+            care_ledgers_col.update_one(
+                {"household_id": household_id},
+                {
+                    "$push": {"care_gaps": gap_data},
+                    "$set": {"updated_at": datetime.utcnow().isoformat() + "Z"},
+                    "$inc": {"open_gaps_count": 1}
+                },
+                upsert=True
+            )
+            updated_doc = care_ledgers_col.find_one({"household_id": household_id}, {"_id": 0})
+            if updated_doc:
+                return updated_doc
+        except Exception as e:
+            print(f"[MongoDB Error in add_care_gap_to_ledger] {e}")
+
+    return get_care_ledger(household_id)

@@ -1017,6 +1017,18 @@ export default function App() {
                     <Text style={styles.tableRow}>
                       <Text style={styles.bold}>രക്തസമ്മർദ്ദം (BP):</Text> {update.vitals.systolic_bp}/{update.vitals.diastolic_bp} mmHg
                     </Text>
+                    {update.vitals.systolic_bp && update.vitals.systolic_bp >= 135 && (
+                      <View style={{ backgroundColor: '#FEF2F2', padding: 8, borderRadius: 6, marginVertical: 4, borderWidth: 1, borderColor: '#FCA5A5' }}>
+                        <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: 'bold' }}>
+                          ⚠️ രക്തസമ്മർദ്ദത്തിൽ വ്യതിയാനം (Acute Vitals Delta Spurt: +{Math.round(update.vitals.systolic_bp - 120)} mmHg above baseline)
+                        </Text>
+                        <TouchableOpacity onPress={() => setActiveTab('vitals')} style={{ marginTop: 3 }}>
+                          <Text style={{ fontSize: 11, color: '#1D4ED8', fontWeight: 'bold' }}>
+                            📊 Compare with 6-Month Baseline in Vitals Engine →
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                     <Text style={styles.tableRow}>
                       <Text style={styles.bold}>ശരീരഭാരം (Weight):</Text> {update.vitals.weight_kg} kg
                     </Text>

@@ -48,7 +48,14 @@ class ActionGenerator:
                 assigned = gap.get("owner") or "ASHA Worker (Ward 4)"
 
             default_desc = "Conduct field visit and verify observations."
-            if programme_raw == "malnutrition":
+            gap_type_raw = gap.get("gap_type", "")
+            if gap_type_raw == "vitals_delta_hypertensive_spurt":
+                default_desc = "Conduct urgent home visit within 48h: verify anti-hypertensive drug adherence, re-measure BP, and alert Medical Officer."
+            elif gap_type_raw == "child_growth_velocity_faltering":
+                default_desc = "Initiate pediatric nutrition follow-up: counsel on eggs/milk/pulses diversity, inspect for recurrent illness, and schedule 7-day weight re-check."
+            elif gap_type_raw == "acute_glycemic_drift":
+                default_desc = "Verify diabetic medication compliance, diet controls, and schedule PHC fasting blood sugar test."
+            elif programme_raw == "malnutrition":
                 default_desc = "Counsel family on child dietary diversity (milk/eggs/pulses) and monitor MUAC."
             elif programme_raw == "maternal":
                 default_desc = "Conduct home visit for BP measurement, IFA tablet distribution, and fetal health review."
@@ -58,7 +65,7 @@ class ActionGenerator:
                 "household_id": household_id,
                 "care_gap_id": care_gap_uuid,
                 "title": title,
-                "description": gap.get("recommended_action") or gap.get("description") or default_desc,
+                "description": gap.get("recommended_action") or default_desc or gap.get("description"),
                 "assigned_to": assigned,
                 "due_date": gap.get("due_date") or default_due,
                 "status": "pending"

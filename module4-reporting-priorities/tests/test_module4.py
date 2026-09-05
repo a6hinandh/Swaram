@@ -195,3 +195,82 @@ async def test_playwright_full_submit_and_ack():
     assert result["status"] == "success"
     assert "acknowledgement_number" in result
     assert "ACK-2026-" in result["acknowledgement_number"]
+
+def test_priority_engine_vitals_delta_spurt():
+    hh = {
+        "id": "hh-spurt-01",
+        "latest_vitals": {"systolic_bp": 148, "diastolic_bp": 92},
+        "latest_delta_analysis": {
+            "systolic_delta": 28.0,
+            "diastolic_delta": 12.0,
+            "is_hypertensive_spurt": True,
+            "is_acute_crisis": False
+        },
+        "vulnerability_factors": {"has_elderly_chronic": True}
+    }
+    gaps = [
+        {
+            "id": "gap-spurt-01",
+            "programme": "ncd",
+            "gap_type": "vitals_delta_hypertensive_spurt",
+            "severity": "high",
+            "status": "open",
+            "description": "Acute systolic BP spurt (+28 mmHg from personal baseline 120/80)"
+        }
+    ]
+    score, reasons, breakdown = PriorityEngine.calculate_household_priority(hh, gaps)
+    assert score >= 50.0
+    assert breakdown["risk"] == 20.0
+    assert any("spurt" in r.lower() or "elevated" in r.lower() for r in reasons)
+
+def test_priority_engine_pediatric_growth_faltering():
+    hh = {
+        "id": "hh-ped-01",
+        "latest_vitals": {"weight_kg": 9.7},
+        "latest_delta_analysis": {
+            "weight_delta_kg": -0.5,
+            "pediatric_velocity_status": "weight_loss"
+        },
+        "vulnerability_factors": {"child_malnutrition_flag": True}
+    }
+    gaps = [
+        {
+            "id": "gap-falter-01",
+            "programme": "malnutrition",
+            "gap_type": "child_growth_velocity_faltering",
+            "severity": "high",
+            "status": "open",
+            "description": "Pediatric weight drop -500g over 45 days"
+        }
+    ]
+    score, reasons, breakdown = PriorityEngine.calculate_household_priority(hh, gaps)
+    assert score >= 40.0
+    assert breakdown["risk"] == 20.0
+    assert breakdown["vulnerability"] == 10.0
+    assert any("growth faltering" in r.lower() or "weight drop" in r.lower() for r in reasons)
+
+def test_action_generator_vitals_delta():
+    gaps = [
+        {
+            "id": "gap-spurt-01",
+            "programme": "ncd",
+            "gap_type": "vitals_delta_hypertensive_spurt",
+            "severity": "high",
+            "status": "open",
+            "description": "Acute systolic BP spurt (+28 mmHg)",
+            "owner": "ASHA Worker (Ward 4)"
+        },
+        {
+            "id": "gap-falter-02",
+            "programme": "malnutrition",
+            "gap_type": "child_growth_velocity_faltering",
+            "severity": "high",
+            "status": "open",
+            "description": "Pediatric weight drop -500g",
+            "owner": "ASHA Worker (Ward 4)"
+        }
+    ]
+    actions = ActionGenerator.generate_actions_for_gaps("hh-test-01", gaps)
+    assert len(actions) == 2
+    assert any("urgent home visit within 48h" in a["description"].lower() for a in actions)
+    assert any("pediatric nutrition" in a["description"].lower() or "weight" in a["description"].lower() for a in actions)
