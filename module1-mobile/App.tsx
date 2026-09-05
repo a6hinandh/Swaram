@@ -48,6 +48,8 @@ import {
   NcdLifestyleScreen,
   VitalsBaselineScreen
 } from './src/modules';
+import { FloatingRobotButton } from './src/components/FloatingRobotButton';
+import { AshaChatbotModal } from './src/components/AshaChatbotModal';
 
 export default function App() {
   // State for connectivity & Diagnostic Ping
@@ -87,6 +89,7 @@ export default function App() {
   const [showKeyPlaintext, setShowKeyPlaintext] = useState<boolean>(false);
   const [showZScoreModal, setShowZScoreModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AppTab>('core');
+  const [isChatbotOpen, setIsChatbotOpen] = useState<boolean>(false);
 
   const handleSaveSarvamKey = () => {
     setCustomSarvamApiKey(sarvamApiKeyInput);
@@ -1186,6 +1189,15 @@ export default function App() {
 
       {/* Persistent Bottom Tab Navigation Bar */}
       <BottomTabBar activeTab={activeTab} onTabSelect={setActiveTab} />
+
+      {/* Floating Robot Head ASHA Copilot Button (Bottom-Right) */}
+      <FloatingRobotButton onPress={() => setIsChatbotOpen(true)} />
+
+      {/* Swaram ASHA AI Chatbot Modal */}
+      <AshaChatbotModal
+        visible={isChatbotOpen}
+        onClose={() => setIsChatbotOpen(false)}
+      />
 
       {/* Raw Schema JSON Viewer Modal */}
       <Modal
