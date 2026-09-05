@@ -143,12 +143,23 @@ export const apiClient = {
   /**
    * Process Voice Survey: Natural Speech -> ASR -> Survey & Malnutrition Extraction
    */
-  async processVoiceVisit(audioUri?: string): Promise<ApiCallStatus<VisitDraft>> {
+  async processVoiceVisit(audioUriOrTranscript?: string): Promise<ApiCallStatus<VisitDraft>> {
     try {
-      const response = await fetch(`${getVoiceBaseUrl()}/voice/process-survey`, {
+      const isTranscript = Boolean(
+        audioUriOrTranscript && 
+        (audioUriOrTranscript.includes(' ') || audioUriOrTranscript.length > 20) && 
+        !audioUriOrTranscript.endsWith('.wav') && 
+        !audioUriOrTranscript.endsWith('.m4a') &&
+        !audioUriOrTranscript.endsWith('.mp3')
+      );
+      const body = isTranscript
+        ? { transcript: audioUriOrTranscript, language: 'ml' }
+        : { audio_uri: audioUriOrTranscript, language: 'ml' };
+
+      const response = await fetch(`${getVoiceBaseUrl()}/voice/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio_uri: audioUri, language: 'ml' }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(5000)
       });
       if (response.ok) {
