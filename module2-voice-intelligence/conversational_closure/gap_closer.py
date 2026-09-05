@@ -110,6 +110,24 @@ class CareGapConversationalCloser:
                 "target_field": "symptoms"
             }
 
+        # Mental Health Screening Gap Path
+        elif gap_type in ["mental_health_depression_risk", "postpartum_anxiety_risk", "mental_health_screening"]:
+            mh = known_context.get("mental_health", {})
+            if mh.get("anxiety_score") is None:
+                return {
+                    "question_id": "q_mh_anxiety",
+                    "question_text_ml": "കഴിഞ്ഞ രണ്ടാഴ്ചയായി അമിതമായ ഉത്കണ്ഠയോ പരിഭ്രമമോ തോന്നിയിരുന്നോ?",
+                    "question_text_en": "Over the past 2 weeks, did you feel nervous, anxious, or unable to stop worrying?",
+                    "target_field": "mental_health.anxiety_score"
+                }
+            if mh.get("depression_score") is None:
+                return {
+                    "question_id": "q_mh_depression",
+                    "question_text_ml": "കഴിഞ്ഞ രണ്ടാഴ്ചയായി പ്രത്യാശയില്ലായ്മയോ കാര്യങ്ങളിൽ താല്പര്യക്കുറവോ തോന്നിയിരുന്നോ?",
+                    "question_text_en": "Over the past 2 weeks, did you feel down, depressed, or have little interest in doing things?",
+                    "target_field": "mental_health.depression_score"
+                }
+
         return None
 
     @staticmethod

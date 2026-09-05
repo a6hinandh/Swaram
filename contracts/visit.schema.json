@@ -24,6 +24,11 @@
         "muac_cm": { "type": "number", "minimum": 5.0, "maximum": 25.0 },
         "wasting_status": { "type": "string", "enum": ["normal", "moderate_wasting", "severe_acute_malnutrition"] },
         "stunting_status": { "type": "string", "enum": ["normal", "stunted", "severely_stunted"] },
+        "waz_zscore": { "type": "number" },
+        "haz_zscore": { "type": "number" },
+        "growth_velocity_status": { "type": "string", "enum": ["normal", "fallowing", "faltering", "weight_loss", "unknown"] },
+        "previous_weight_kg": { "type": "number" },
+        "weight_delta_kg": { "type": "number" },
         "dietary_diversity_score": { "type": "integer", "minimum": 0, "maximum": 8 },
         "consumed_milk": { "type": "boolean" },
         "consumed_eggs": { "type": "boolean" },
@@ -60,6 +65,17 @@
       },
       "additionalProperties": false
     },
+    "MentalHealthAssessment": {
+      "type": "object",
+      "properties": {
+        "anxiety_score": { "type": "number", "minimum": 0, "maximum": 6 },
+        "depression_score": { "type": "number", "minimum": 0, "maximum": 6 },
+        "total_score": { "type": "number", "minimum": 0, "maximum": 12 },
+        "risk_level": { "type": "string", "enum": ["normal", "mild", "moderate", "severe"] },
+        "screening_status": { "type": "string", "enum": ["completed", "partial", "pending"] }
+      },
+      "additionalProperties": false
+    },
     "PersonUpdate": {
       "type": "object",
       "required": ["person_id", "name"],
@@ -71,6 +87,7 @@
         "pregnancy_weeks": { "type": "integer", "minimum": 1, "maximum": 45 },
         "vitals": { "$ref": "#/definitions/Vitals" },
         "malnutrition": { "$ref": "#/definitions/MalnutritionAssessment" },
+        "mental_health": { "$ref": "#/definitions/MentalHealthAssessment" },
         "symptoms": { "type": "array", "items": { "type": "string" } },
         "medications_given": { "type": "array", "items": { "type": "string" } },
         "services_provided": { "type": "array", "items": { "type": "string" } },

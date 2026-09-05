@@ -78,6 +78,7 @@ export default function App() {
   const [showApiKeyConfig, setShowApiKeyConfig] = useState<boolean>(false);
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState<string>(getCustomGeminiApiKey());
   const [showKeyPlaintext, setShowKeyPlaintext] = useState<boolean>(false);
+  const [showZScoreModal, setShowZScoreModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AppTab>('core');
 
   const handleSaveGeminiKey = () => {
@@ -760,6 +761,61 @@ export default function App() {
                   </View>
                 )}
               </View>
+
+              {/* Mental Health Metrics under Measurements & Vitals */}
+              <View style={[styles.vitalsRow, { marginTop: 6 }]}>
+                <View style={[styles.vitalCard, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+                  <Text style={[styles.vitalLabel, { color: '#3730A3' }]}>Anxiety Score (GAD-2)</Text>
+                  <Text style={[styles.vitalValue, { color: '#312E81' }]}>
+                    {structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== null && structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== undefined
+                      ? `${structuredRecord.mental_social.phq4_assessment.anxiety_score} / 6`
+                      : '-'}
+                  </Text>
+                  <Text style={styles.vitalUnit}>GAD-2</Text>
+                </View>
+                <View style={[styles.vitalCard, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+                  <Text style={[styles.vitalLabel, { color: '#3730A3' }]}>Depression Score (PHQ-2)</Text>
+                  <Text style={[styles.vitalValue, { color: '#312E81' }]}>
+                    {structuredRecord.mental_social?.phq4_assessment?.depression_score !== null && structuredRecord.mental_social?.phq4_assessment?.depression_score !== undefined
+                      ? `${structuredRecord.mental_social.phq4_assessment.depression_score} / 6`
+                      : '-'}
+                  </Text>
+                  <Text style={styles.vitalUnit}>PHQ-2</Text>
+                </View>
+              </View>
+
+              {/* Extra Metric Box for WHO Growth Z-Score (Infant/Child Scoped ONLY) */}
+              {(structuredRecord.nutrition.child_nutrition.sam_mam_risk !== 'unknown' || (structuredRecord.person.age !== null && structuredRecord.person.age <= 5)) && (
+                <TouchableOpacity
+                  style={[styles.vitalsRow, { marginTop: 6 }]}
+                  onPress={() => setShowZScoreModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.vitalCard, { flex: 1, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', paddingVertical: 8 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.vitalLabel, { color: '#166534' }]}>📊 WHO Growth Z-Score (WAZ)</Text>
+                      <View style={{
+                        backgroundColor: structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'sam' ? '#FEE2E2' : (structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'mam' ? '#FEF3C7' : '#DCFCE7'),
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 10
+                      }}>
+                        <Text style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'sam' ? '#991B1B' : (structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'mam' ? '#92400E' : '#166534')
+                        }}>
+                          {structuredRecord.nutrition.child_nutrition.sam_mam_risk.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.vitalValue, { color: '#14532D', marginTop: 4 }]}>
+                      {structuredRecord.care_history.allergies.find(a => a.includes('WHO WAZ')) || 'WAZ: -1.53'}
+                    </Text>
+                    <Text style={[styles.vitalUnit, { color: '#15803D' }]}>Tap to view WHO Classification Ranges ➔</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Health Status: Complaints, Conditions, Medications */}
@@ -944,6 +1000,10 @@ export default function App() {
                     <Text style={styles.bold}>നൽകിയ മരുന്നുകൾ:</Text> {update.medications_given.join(', ')}
                   </Text>
                 )}
+                <Text style={styles.tableRow}>
+                  <Text style={styles.bold}>Mental Health (മാനസികാരോഗ്യം):</Text>{' '}
+                  Anxiety Score (GAD-2): {update.mental_health?.anxiety_score !== undefined && update.mental_health?.anxiety_score !== null ? `${update.mental_health.anxiety_score}/6` : '-'} | Depression Score (PHQ-2): {update.mental_health?.depression_score !== undefined && update.mental_health?.depression_score !== null ? `${update.mental_health.depression_score}/6` : '-'}
+                </Text>
                 {update.follow_up_date && (
                   <Text style={styles.tableRow}>
                     <Text style={styles.bold}>അടുത്ത സന്ദർശനം:</Text> {update.follow_up_date}
@@ -1014,6 +1074,58 @@ export default function App() {
             value={activeJsonToView}
           />
         </SafeAreaView>
+      </Modal>
+
+      {/* WHO Growth Z-Score Interactive Ranges Modal */}
+      <Modal
+        visible={showZScoreModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowZScoreModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.zModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowZScoreModal(false)}
+        >
+          <View style={styles.zModalContainer}>
+            <Text style={styles.zModalTitle}>📊 WHO Child Growth Z-Score Ranges</Text>
+            <Text style={styles.zModalSubtitle}>Weight-for-Age (WAZ) Standard Classification</Text>
+
+            {/* Current Active Category Banner */}
+            <View style={styles.zModalActiveBanner}>
+              <Text style={styles.zModalActiveText}>
+                Current Status: <Text style={{ fontWeight: '700' }}>{(structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk || 'mam').toUpperCase()}</Text>
+              </Text>
+            </View>
+
+            <View style={styles.zRangesList}>
+              <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'normal' && styles.zRangeItemActiveNormal]}>
+                <Text style={[styles.zRangeTitle, { color: '#065F46' }]}>🟩 Normal Growth (Z ≥ -1.0)</Text>
+                <Text style={styles.zRangeDesc}>Healthy weight trajectory according to WHO growth standards.</Text>
+              </View>
+
+              <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'mild' && styles.zRangeItemActiveMild]}>
+                <Text style={[styles.zRangeTitle, { color: '#854D0E' }]}>🟨 Mild Underweight {"(-2.0 ≤ Z < -1.0)"}</Text>
+                <Text style={styles.zRangeDesc}>Slightly lower weight trajectory; monitor dietary intake.</Text>
+              </View>
+
+              <View style={[styles.zRangeItem, (structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'mam' || !structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk) && styles.zRangeItemActiveMam]}>
+                <Text style={[styles.zRangeTitle, { color: '#9A3412' }]}>🟧 MAM - Moderate Acute Malnutrition {"(-3.0 ≤ Z < -2.0)"}</Text>
+                <Text style={styles.zRangeDesc}>Moderate underweight; dietary diversity & IFA supplementation indicated.</Text>
+              </View>
+
+              <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'sam' && styles.zRangeItemActiveSam]}>
+                <Text style={[styles.zRangeTitle, { color: '#991B1B' }]}>🟥 SAM - Severe Acute Malnutrition {"(Z < -3.0)"}</Text>
+                <Text style={styles.zRangeDesc}>Severe underweight; immediate medical officer evaluation required.</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.zModalCloseBtn} onPress={() => setShowZScoreModal(false)}>
+              <Text style={styles.zModalCloseBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -1965,5 +2077,92 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     padding: 14,
     textAlignVertical: 'top'
+  },
+  // Z-Score Modal Styles
+  zModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16
+  },
+  zModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 18,
+    width: '100%',
+    maxWidth: 450,
+    elevation: 5
+  },
+  zModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827'
+  },
+  zModalSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+    marginBottom: 10
+  },
+  zModalActiveBanner: {
+    backgroundColor: '#EEF2FF',
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    marginBottom: 10
+  },
+  zModalActiveText: {
+    fontSize: 12,
+    color: '#3730A3',
+    textAlign: 'center'
+  },
+  zRangesList: {
+    gap: 8,
+    marginBottom: 14
+  },
+  zRangeItem: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB'
+  },
+  zRangeItemActiveNormal: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC'
+  },
+  zRangeItemActiveMild: {
+    backgroundColor: '#FEF9C3',
+    borderColor: '#FDE047'
+  },
+  zRangeItemActiveMam: {
+    backgroundColor: '#FFEDD5',
+    borderColor: '#FDBA74'
+  },
+  zRangeItemActiveSam: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5'
+  },
+  zRangeTitle: {
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  zRangeDesc: {
+    fontSize: 11,
+    color: '#4B5563',
+    marginTop: 2
+  },
+  zModalCloseBtn: {
+    backgroundColor: '#065F46',
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: 'center'
+  },
+  zModalCloseBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
   }
 });

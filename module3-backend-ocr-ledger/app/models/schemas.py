@@ -23,6 +23,13 @@ class MalnutritionAssessmentSchema(BaseModel):
     risk_level: str = "normal"
     clinical_notes: Optional[str] = None
 
+class MentalHealthAssessmentSchema(BaseModel):
+    anxiety_score: Optional[float] = None
+    depression_score: Optional[float] = None
+    total_score: Optional[float] = None
+    risk_level: Optional[str] = "normal"
+    screening_status: Optional[str] = "pending"
+
 class SwaramSurveyFieldSchema(BaseModel):
     field_key: str
     section: str
@@ -39,6 +46,7 @@ class PersonUpdateSchema(BaseModel):
     pregnancy_weeks: Optional[int] = None
     vitals: Optional[VitalsSchema] = None
     malnutrition: Optional[MalnutritionAssessmentSchema] = None
+    mental_health: Optional[MentalHealthAssessmentSchema] = None
     symptoms: Optional[List[str]] = Field(default_factory=list)
     medications_given: Optional[List[str]] = Field(default_factory=list)
     services_provided: Optional[List[str]] = Field(default_factory=list)
