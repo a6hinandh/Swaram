@@ -23,6 +23,7 @@ encounters_col = None
 households_col = None
 visits_col = None
 care_ledgers_col = None
+environmental_assessments_col = None
 
 try:
     print(f"[MongoDB] Initializing connection to: {MONGO_URI.split('@')[-1] if '@' in MONGO_URI else MONGO_URI}...")
@@ -35,6 +36,7 @@ try:
     households_col = db["households"]
     visits_col = db["visits"]
     care_ledgers_col = db["care_ledgers"]
+    environmental_assessments_col = db["environmental_assessments"]
 
     # Setup indexes
     encounters_col.create_index([("visit.visit_id", ASCENDING)], unique=True)
@@ -44,6 +46,9 @@ try:
 
     households_col.create_index([("id", ASCENDING)], unique=True)
     visits_col.create_index([("visit_id", ASCENDING)], unique=True)
+    environmental_assessments_col.create_index([("assessment_id", ASCENDING)], unique=True)
+    environmental_assessments_col.create_index([("household_id", ASCENDING)])
+    environmental_assessments_col.create_index([("timestamp", ASCENDING)])
 
     print("[MongoDB] Successfully connected to MongoDB database 'swaram_db' with all indexes ready.")
 except (ConnectionFailure, OperationFailure, Exception) as e:
@@ -54,3 +59,4 @@ except (ConnectionFailure, OperationFailure, Exception) as e:
     households_col = None
     visits_col = None
     care_ledgers_col = None
+    environmental_assessments_col = None
