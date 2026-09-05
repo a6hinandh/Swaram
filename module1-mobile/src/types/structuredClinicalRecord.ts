@@ -69,6 +69,7 @@ export interface HealthStatus {
 export interface Measurements {
   blood_pressure: string | null;
   weight_kg: number | null;
+  height_cm: number | null;
   temperature_f: number | null;
   pulse_bpm: number | null;
   spo2_percent: number | null;
@@ -211,6 +212,7 @@ export function createEmptyClinicalRecord(
     measurements: {
       blood_pressure: null,
       weight_kg: null,
+      height_cm: null,
       temperature_f: null,
       pulse_bpm: null,
       spo2_percent: null,

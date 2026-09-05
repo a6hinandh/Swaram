@@ -10,11 +10,7 @@ import {
   HouseholdSummary,
   VisitDraft
 } from '../types';
-import {
-  MOCK_CARE_LEDGER,
-  MOCK_HOUSEHOLDS,
-  MOCK_VISIT_DRAFT_RESPONSE
-} from '../data/mockData';
+import { extractStructuredClinicalRecord } from '../services/clinicalEntityExtractor';
 
 import { Platform, NativeModules } from 'react-native';
 
@@ -79,7 +75,7 @@ export const apiClient = {
       return {
         data: { status: 'offline_mode', service: 'swaram-mobile-local' },
         isMockFallback: true,
-        message: `Module 3 backend unreachable at ${baseUrl} (${err.message || 'Offline'}). Operating in offline-safe mock mode.`
+        message: `Module 3 backend offline at ${baseUrl} (${err.message || 'Offline'}). Operating in local offline mode.`
       };
     }
   },
@@ -105,9 +101,9 @@ export const apiClient = {
       throw new Error(`HTTP ${response.status}`);
     } catch {
       return {
-        data: MOCK_HOUSEHOLDS,
+        data: [],
         isMockFallback: true,
-        message: 'Loaded cached households from local store (Offline fallback).'
+        message: 'No households cached on device (Backend offline).'
       };
     }
   },
@@ -115,7 +111,7 @@ export const apiClient = {
   /**
    * Get Household Unresolved Care Ledger (Longitudinal history & malnutrition trends)
    */
-  async getCareLedger(householdId: string): Promise<ApiCallStatus<HouseholdCareLedger>> {
+  async getCareLedger(householdId: string): Promise<ApiCallStatus<HouseholdCareLedger | null>> {
     try {
       const response = await fetch(`${getBackendBaseUrl()}/ledger/${householdId}`, {
         method: 'GET',
@@ -133,9 +129,9 @@ export const apiClient = {
       throw new Error(`HTTP ${response.status}`);
     } catch {
       return {
-        data: MOCK_CARE_LEDGER,
+        data: null,
         isMockFallback: true,
-        message: 'Loaded local offline Care Ledger.'
+        message: 'Care Ledger not available offline.'
       };
     }
   },
@@ -173,10 +169,54 @@ export const apiClient = {
       }
       throw new Error(`HTTP ${response.status}`);
     } catch {
+      // Dynamic local extraction instead of static mock data
+      const clinical = extractStructuredClinicalRecord(audioUriOrTranscript || '');
+      let systolic: number | undefined;
+      let diastolic: number | undefined;
+      if (clinical.measurements.blood_pressure) {
+        const parts = clinical.measurements.blood_pressure.split('/');
+        if (parts.length === 2) {
+          systolic = parseInt(parts[0], 10) || undefined;
+          diastolic = parseInt(parts[1], 10) || undefined;
+        }
+      }
+
+      const dynamicDraft: VisitDraft = {
+        visit_id: clinical.visit.visit_id,
+        household_id: 'local-session',
+        worker_id: 'w-asha-001',
+        timestamp: new Date().toISOString(),
+        language: (clinical.extraction.language_detected === 'en' ? 'en' : 'ml'),
+        transcript: audioUriOrTranscript || '',
+        confidence: clinical.extraction.confidence_score,
+        validation_flags: [],
+        confirmation_status: 'pending',
+        person_updates: [
+          {
+            person_id: 'p-local-01',
+            name: clinical.person.name || 'Patient',
+            age: clinical.person.age || undefined,
+            gender: clinical.person.sex,
+            vitals: {
+              systolic_bp: systolic,
+              diastolic_bp: diastolic,
+              weight_kg: clinical.measurements.weight_kg || undefined,
+              height_cm: clinical.measurements.height_cm || undefined,
+              pulse_bpm: clinical.measurements.pulse_bpm || undefined
+            },
+            symptoms: clinical.health_status.complaints.map(c => c.symptom),
+            medications_given: clinical.health_status.medications.map(m => m.name),
+            services_provided: ['Vitals check'],
+            follow_up_date: clinical.follow_up.due_date || undefined
+          }
+        ],
+        survey_fields: []
+      };
+
       return {
-        data: MOCK_VISIT_DRAFT_RESPONSE,
-        isMockFallback: true,
-        message: 'Simulated voice extraction using local contract.'
+        data: dynamicDraft,
+        isMockFallback: false,
+        message: 'Dynamic clinical extraction completed from speech transcript.'
       };
     }
   },

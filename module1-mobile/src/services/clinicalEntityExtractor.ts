@@ -11,6 +11,7 @@ import {
   createEmptyClinicalRecord,
 } from '../types/structuredClinicalRecord';
 import { HouseholdSummary } from '../types';
+import { correctMalayalamSpelling } from './malayalamSpellCorrector';
 
 // --- Helper Date Formatting ---
 function formatDateYYYYMMDD(date: Date): string {
@@ -30,6 +31,51 @@ function getNextDayOfWeek(targetDay: number, fromDate = new Date()): Date {
   return result;
 }
 
+// Malayalam number word mapping for phonetic voice transcription
+const MALAYALAM_NUMBER_WORDS: Record<string, number> = {
+  'പത്ത്': 10,
+  'പതിനഞ്ച്': 15,
+  'ഇരുപത്': 20,
+  'ഇരുപത്തിയഞ്ച്': 25,
+  'ഇരുപത്തിയാറ്': 26,
+  'ഇരുപത്തിയേഴ്': 27,
+  'ഇരുപത്തിയെട്ട്': 28,
+  'ഇരുപത്തൊമ്പത്': 29,
+  'മുപ്പത്': 30,
+  'മുപ്പത്തിയഞ്ച്': 35,
+  'നാൽപ്പത്': 40,
+  'നാപ്പത്': 40,
+  'അമ്പത്': 50,
+  'അറുപത്': 60,
+  'എഴുപത്': 70,
+  'എഴുപത്തിയഞ്ച്': 75,
+  'എൺപത്': 80,
+  'എമ്പത്': 80,
+  'തൊണ്ണൂറ്': 90,
+  'നൂറ്': 100,
+  'നൂറു': 100,
+  'നൂറ': 100,
+  'നൂറ്റിരുപത്': 120,
+  'നൂറ്റി മുപ്പത്': 130,
+  'നൂറ്റിയമ്പത്': 150,
+  'മൂന്ന്': 3,
+  'മൂന്നു': 3,
+  'നാല്': 4,
+  'നാലു': 4,
+  'അഞ്ച്': 5,
+  'അഞ്ചു': 5,
+};
+
+function parseMalayalamOrArabicNumber(token: string): number | null {
+  if (!token) return null;
+  const clean = token.trim().toLowerCase();
+  if (MALAYALAM_NUMBER_WORDS[clean] !== undefined) {
+    return MALAYALAM_NUMBER_WORDS[clean];
+  }
+  const parsed = parseFloat(clean);
+  return isNaN(parsed) ? null : parsed;
+}
+
 /**
  * Main Clinical Entity Extractor
  */
@@ -38,6 +84,8 @@ export function extractStructuredClinicalRecord(
   household?: HouseholdSummary | null
 ): StructuredClinicalRecord {
   const rawText = transcript ? transcript.trim() : '';
+  const normalizedText = correctMalayalamSpelling(rawText);
+  const searchText = `${rawText} ${normalizedText}`;
   const now = new Date();
   const todayStr = formatDateYYYYMMDD(now);
 
@@ -70,9 +118,9 @@ export function extractStructuredClinicalRecord(
   // --- 1. PERSON & DEMOGRAPHICS ---
   // A. Age Detection
   let detectedAge: number | null = null;
-  // "28 വയസ്സ്", "28 വയസ്സുള്ള", "28 വയസ്", "age 28", "28 years old", "28 yrs"
-  const ageMatch = rawText.match(/(\d{1,3})\s*(?:വയസ്സ്|വയസ്സുള്ള|വയസ്|വയസാ|years?\s*old|yrs?\s*old|age)/i)
-    || rawText.match(/(?:age|വയസ്സ്)[:\s]*(\d{1,3})/i);
+  const ageMatch = searchText.match(/(\d{1,3})\s*(?:വയസ്സ(?:ും|ായി|ുള്ള|ിൽ|ിന്)?|വയസ്(?:ും|ായി|ുള്ള|ിൽ|ിന്)?|വയസാ|വൈസാഇൗ|വൈസായി|years?\s*old|yrs?\s*old|years|yrs|age)(?:[,\s.]|$)/i)
+    || searchText.match(/(?:age|വയസ്സ്|വയസ്സും|വയസ്)[:\s]*(\d{1,3})/i)
+    || searchText.match(/(?:is|ആണ്|ആയ)\s*(\d{1,3})\s*(?:years?\s*old|വയസ്സ(?:ും|ായി|ുള്ള)?|വയസ്)/i);
 
   if (ageMatch) {
     const parsed = parseInt(ageMatch[1], 10);
@@ -81,9 +129,17 @@ export function extractStructuredClinicalRecord(
     }
   }
 
+  // Check Malayalam number words for age: e.g. "എൺപത് വയസ്സ്" -> 80, "നൂറ വൈസാഇൗ" -> 100
+  if (detectedAge === null) {
+    const mlNumAgeMatch = searchText.match(/(പത്ത്|ഇരുപത്|ഇരുപത്തിയഞ്ച്|ഇരുപത്തിയെട്ട്|മുപ്പത്|മുപ്പത്തിയഞ്ച്|നാൽപ്പത്|നാപ്പത്|അമ്പത്|അറുപത്|എഴുപത്|എൺപത്|എമ്പത്|തൊണ്ണൂറ്|നൂറ്|നൂറു|നൂറ)\s*(?:വയസ്സ(?:ും|ായി|ുള്ള)?|വയസ്(?:ും|ായി|ുള്ള)?|വൈസാഇൗ|വൈസായി)/i);
+    if (mlNumAgeMatch && mlNumAgeMatch[1]) {
+      detectedAge = parseMalayalamOrArabicNumber(mlNumAgeMatch[1]);
+    }
+  }
+
   // Check infant months if age in years not found (e.g. "8 മാസം", "8 months old")
   if (detectedAge === null) {
-    const monthMatch = rawText.match(/(\d{1,2})\s*(?:മാസം|മാസമുള്ള|months?\s*old|mths?\s*old)/i);
+    const monthMatch = searchText.match(/(\d{1,2})\s*(?:മാസം|മാസമുള്ള|months?\s*old|mths?\s*old)/i);
     if (monthMatch) {
       const months = parseInt(monthMatch[1], 10);
       if (!isNaN(months) && months <= 24) {
@@ -109,30 +165,117 @@ export function extractStructuredClinicalRecord(
   }
 
   // B. Name Extraction
-  // Look for patterns like: "പേര് ലക്ഷ്മി", "Name is Radha", "ശ്രീമതി ലക്ഷ്മി", or first word followed by comma/age
+  // Robust matching for English, Malayalam, and Manglish variations:
+  // "the patient name is Lakshmi", "patient name is Lakshmi", "name is Lakshmi", "പേര് ലക്ഷ്മി", "രോഗി ലക്ഷ്മി", "Lakshmi is 80 years old"
   let detectedName: string | null = null;
-  const nameLabelMatch = rawText.match(/(?:പേര്|രോഗി|ശ്രീമതി|ശ്രീ|name\s*(?:is)?)\s*[:]?\s*([A-Za-z\u0D00-\u0D7F]+)/i);
-  if (nameLabelMatch && nameLabelMatch[1]) {
-    detectedName = nameLabelMatch[1].trim();
-  } else {
-    // Check if start of transcript has name before comma or age (e.g. "ലക്ഷ്മി, 28 വയസ്സ്" or "Lakshmi, 28")
-    const leadingNameMatch = rawText.match(/^([A-Za-z\u0D00-\u0D7F]{2,20})\s*[,.]\s*(?:\d{1,3}|വയസ്സ്|age)/i);
-    if (leadingNameMatch) {
-      detectedName = leadingNameMatch[1].trim();
+  const invalidNameStopwords = new Set([
+    'the', 'patient', 'name', 'is', 'today', 'visited', 'checked', 'examined', 'asha',
+    'രോഗി', 'പേര്', 'ഇന്ന്', 'കണ്ടു', 'പരിശോധിച്ചു', 'ശബ്ദം', 'നൂറ്', 'നൂറ', 'വയസ്സ്', 'കിലോ'
+  ]);
+
+  const nameExplicitMatch = searchText.match(
+    /(?:(?:the\s+)?patient\s+name\s*(?:is|:)?|name\s*(?:is|:)?|രോഗിയുടെ\s*പേര്|പേര്|പേഷ്യന്റ്\s*(?:നെയിം|പേര്)?)\s*[:]?\s*([A-Za-z\u0D00-\u0D7F]+)/i
+  );
+  if (nameExplicitMatch && nameExplicitMatch[1]) {
+    const cand = nameExplicitMatch[1].trim();
+    if (!invalidNameStopwords.has(cand.toLowerCase())) {
+      detectedName = cand;
+    }
+  }
+
+  if (!detectedName) {
+    // "the patient Lakshmi", "patient Lakshmi", "ശ്രീമതി ലക്ഷ്മി", "ശ്രീ സുരേഷ്"
+    const patientPrefixMatch = searchText.match(/(?:(?:the\s+)?patient|രോഗി|ശ്രീമതി|ശ്രീ)\s+([A-Za-z\u0D00-\u0D7F]{2,25})/i);
+    if (patientPrefixMatch && patientPrefixMatch[1]) {
+      const cand = patientPrefixMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase())) {
+        detectedName = cand;
+      }
+    }
+  }
+
+  if (!detectedName) {
+    // "[Name] is [Age] years old" e.g. "Lakshmi is 80 years old"
+    const nameIsAgeMatch = searchText.match(/^([A-Za-z\u0D00-\u0D7F]{2,25})\s+is\s+(?:\d{1,3}|years|age|വയസ്സ്)/i);
+    if (nameIsAgeMatch && nameIsAgeMatch[1]) {
+      const cand = nameIsAgeMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase())) {
+        detectedName = cand;
+      }
+    }
+  }
+
+  if (!detectedName) {
+    // 1. Compound names ending in അമ്മ / യമ്മ e.g. "ലക്ഷ്മിയമ്മയ്ക്ക്", "ലക്ഷ്മിയമ്മ", "ശാന്തമ്മയ്ക്ക്"
+    const ammaCompoundMatch = searchText.match(
+      /^([A-Za-z\u0D00-\u0D7F]{2,20}?(?:യമ്മ|അമ്മ))(?:യ്ക്ക്|ക്ക്|ിന്|ന്|യെ|യുടെ)?(?:\s+|$|[0-9])/i
+    );
+    if (ammaCompoundMatch && ammaCompoundMatch[1]) {
+      const cand = ammaCompoundMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase()) && cand.length >= 2) {
+        detectedName = cand;
+      }
+    }
+  }
+
+  if (!detectedName) {
+    // 2. Leading Name followed by Age/Vitals: e.g. "ലക്ഷ്മിയമ്മയ്ക്ക് 100 വയസ്സും", "ലക്ഷ്മിക്ക് 80 കിലോ", "രാധയ്ക്ക് പനിയുണ്ട്"
+    const nameWithVitalsMatch = searchText.match(
+      /^([A-Za-z\u0D00-\u0D7F]{2,25}?)(?:യമ്മ(?:യ്ക്ക്|ക്ക്|യുടെ|യെ)?|അമ്മ(?:യ്ക്ക്|ക്ക്|യുടെ|യെ)?|യ്ക്ക്|ക്ക്|ിന്|ന്|യെ|യുടെ)?\s*[,.]?\s*(?:(?:\d{1,3}|[A-Za-z\u0D00-\u0D7F]+)\s*(?:വയസ്സ|വയസ്|വയസാ|വൈസായി|വൈസാഇൗ)|ഭാരം|കിലോ|ബിപി|പനി|ഷുഗർ)/i
+    );
+    if (nameWithVitalsMatch && nameWithVitalsMatch[1]) {
+      const cand = nameWithVitalsMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase()) && cand.length >= 2) {
+        detectedName = cand;
+      }
+    }
+  }
+
+  if (!detectedName) {
+    // "[Name] അമ്മയ്ക്ക്", "[Name] അമ്മേകേ", "[Name] അമ്മ" e.g. "ലേക്ക്ഷ്മി അമ്മേകേ", "ലക്ഷ്മി അമ്മയ്ക്ക്"
+    const leadingAmmaMatch = rawText.match(/^([A-Za-z\u0D00-\u0D7F]{2,25})\s*(?:അമ്മയ്ക്ക്|അമ്മേകേ|അമ്മക്ക്|അമ്മ|ചേച്ചി|കുട്ടി)/i)
+      || normalizedText.match(/^([A-Za-z\u0D00-\u0D7F]{2,25})\s*(?:അമ്മയ്ക്ക്|അമ്മക്ക്|അമ്മ)/i);
+    if (leadingAmmaMatch && leadingAmmaMatch[1]) {
+      const cand = leadingAmmaMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase())) {
+        detectedName = cand;
+      }
+    }
+  }
+
+  if (!detectedName) {
+    // "[Name] [Age] വയസ്സ്" or "[Name]ക്ക് [Age] വയസ്സ്" or "[Name], [Age]" (including Malayalam number words & വയസ്സും)
+    const leadingNameMatch = searchText.match(/^([A-Za-z\u0D00-\u0D7F]{2,25})(?:യ്ക്ക്|ക്ക്|ന്|ിന്)?\s*[,.]?\s*(?:\d{1,3}|[A-Za-z\u0D00-\u0D7F]+\s+)?(?:വയസ്സ(?:ും|ായി|ുള്ള)?|വയസ്(?:ും|ായി|ുള്ള)?|age|years)/i);
+    if (leadingNameMatch && leadingNameMatch[1]) {
+      const cand = leadingNameMatch[1].trim();
+      if (!invalidNameStopwords.has(cand.toLowerCase())) {
+        detectedName = cand;
+      }
     }
   }
 
   if (detectedName) {
+    // Normalize phonetic misrecognitions of names
+    if (detectedName === 'ലേക്ക്ഷ്മി' || detectedName === 'ലക്സ്മി' || detectedName === 'ലെക്ഷ്മി') {
+      detectedName = 'ലക്ഷ്മി';
+    } else if (detectedName === 'ലേക്ക്ഷ്മിയമ്മ' || detectedName === 'ലക്സ്മിയമ്മ') {
+      detectedName = 'ലക്ഷ്മിയമ്മ';
+    }
+    // Strip Malayalam case suffixes (e.g. ലക്ഷ്മിയമ്മയ്ക്ക് -> ലക്ഷ്മിയമ്മ, ലക്ഷ്മിക്ക് -> ലക്ഷ്മി, ലക്ഷ്മിയെ -> ലക്ഷ്മി, ലക്ഷ്മിയുടെ -> ലക്ഷ്മി)
+    if (/[\u0D00-\u0D7F]/.test(detectedName)) {
+      detectedName = detectedName.replace(/(?:യ്ക്ക്|ക്ക്|ിന്|ന്|യെ|യുടെ|േകേ)$/, '');
+    }
+    // Standardize casing for English names (e.g. lakshmi -> Lakshmi)
+    if (/^[a-zA-Z]+$/.test(detectedName)) {
+      detectedName = detectedName.charAt(0).toUpperCase() + detectedName.slice(1).toLowerCase();
+    }
     record.person.name = detectedName;
     record.person.person_id = `p_${detectedName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}_${Date.now().toString().slice(-4)}`;
-  } else if (household?.head_of_household) {
-    record.person.name = household.head_of_household;
-    record.person.person_id = `p_${(household.id || 'head').slice(-6)}`;
   }
 
   // C. Sex Detection
-  const femaleSignals = /(?:സ്ത്രീ|പെൺ|പെൺകുട്ടി|അമ്മ|ഭാര്യ|സഹോദരി|ഗർഭിണി|പ്രസവി|female|woman|she|her|mrs|smt)/i;
-  const maleSignals = /(?:പുരുഷൻ|ആൺ|ആൺകുട്ടി|അച്ഛൻ|ഭർത്താവ്|സഹോദരൻ|ശ്രീ|male|man|he|his|mr)/i;
+  const femaleSignals = /(?:സ്ത്രീ|പെൺ|പെൺകുട്ടി|അമ്മ|ഭാര്യ|സഹോദരി|ഗർഭിണി|പ്രസവി|female|woman|she|her|mrs|smt|lakshmi|ലക്ഷ്മി)/i;
+  const maleSignals = /(?:പുരുഷൻ|ആൺ|ആൺകുട്ടി|അച്ഛൻ|ഭർത്താവ്|സഹോദരൻ|ശ്രീ|male|man|he|his|mr|suresh|സുരേഷ്)/i;
 
   if (femaleSignals.test(rawText)) {
     record.person.sex = 'female';
@@ -156,24 +299,38 @@ export function extractStructuredClinicalRecord(
   }
 
   // --- 2. MEASUREMENTS ---
-  // A. Blood Pressure: e.g. "130/85", "120 / 80", "ബിപി 130/85"
-  const bpMatch = rawText.match(/(?:ബിപി|പ്രഷർ|bp|blood\s*pressure)?[:\s]*(\b\d{2,3}\s*[\/]\s*\d{2,3}\b)/i);
-  if (bpMatch) {
-    const cleanBp = bpMatch[1].replace(/\s+/g, '');
-    record.measurements.blood_pressure = cleanBp;
+  // A. Blood Pressure: e.g. "130/85", "120 80", "130 by 85", "130 over 85", "ബിപി 130 85"
+  // Handles speech transcription without slashes
+  let extractedBp: string | null = null;
+  const bpExplicitMatch = rawText.match(/(?:ബിപി|പ്രഷർ|bp|blood\s*pressure)?[:\s]*(\b\d{2,3}\s*[\/]\s*\d{2,3}\b)/i);
+  if (bpExplicitMatch) {
+    extractedBp = bpExplicitMatch[1].replace(/\s+/g, '');
+  } else {
+    // Match space-separated or prepositional BP: "130 85", "130 by 85", "130 over 85", "ബിപി 130 85"
+    const bpSpokenMatch = rawText.match(/(?:ബിപി|പ്രഷർ|bp|blood\s*pressure)?[:\s]*\b(\d{2,3})\s*(?:[\/]|over|by|to|ബൈ|ഓവർ|\s)\s*(\d{2,3})\b/i);
+    if (bpSpokenMatch) {
+      const s = parseInt(bpSpokenMatch[1], 10);
+      const d = parseInt(bpSpokenMatch[2], 10);
+      if (s >= 60 && s <= 250 && d >= 40 && d <= 150) {
+        extractedBp = `${s}/${d}`;
+      }
+    }
+  }
+
+  if (extractedBp) {
+    record.measurements.blood_pressure = extractedBp;
 
     // Check if BP indicates hypertension care gap
-    const [sysStr, diaStr] = cleanBp.split('/');
+    const [sysStr, diaStr] = extractedBp.split('/');
     const sys = parseInt(sysStr, 10);
     const dia = parseInt(diaStr, 10);
     if (sys >= 140 || dia >= 90) {
       record.care_gaps.push({
         gap_type: 'screening',
-        description: `Elevated blood pressure (${cleanBp}) detected. Requires medical evaluation and lifestyle monitoring.`,
+        description: `Elevated blood pressure (${extractedBp}) detected. Requires medical evaluation and lifestyle monitoring.`,
         severity: 'high',
         status: 'open',
       });
-      // Also register as known condition if high
       record.health_status.known_conditions.push({
         condition: 'Hypertension',
         status: 'active',
@@ -181,17 +338,70 @@ export function extractStructuredClinicalRecord(
     }
   }
 
-  // B. Weight: e.g. "58 കിലോ", "58.5 kg", "ഭാരം 58"
-  const weightMatch = rawText.match(/(?:ഭാരം|തൂക്കം|weight)[:\s]*(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs)?/i)
-    || rawText.match(/(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs)\b/i);
-  if (weightMatch) {
-    const wt = parseFloat(weightMatch[1]);
-    if (!isNaN(wt) && wt > 1 && wt < 250) {
-      record.measurements.weight_kg = wt;
+  // B. Weight: e.g. "weighs 100 kilos", "weight 100 kilos", "58 കിലോ", "3 കിലോ പാരവു", "100 kilos", "ഭാരം 100"
+  let extractedWeight: number | null = null;
+  // 1. Number + unit + optional keyword (e.g. "3 കിലോ പാരവു", "3 കിലോ ഭാരവും", "100 കിലോ", "58 kg")
+  const weightUnitMatch = searchText.match(/(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs|kilos|kilo)(?:\s*(?:പാരവു|പാരം|ഭാരവും|ഭാരം|തൂക്കവും|തൂക്കം|weight))?/i);
+  if (weightUnitMatch) {
+    extractedWeight = parseFloat(weightUnitMatch[1]);
+  } else {
+    // 2. Keyword + number (e.g. "ഭാരം 58", "weight 70")
+    const weightKeywordMatch = searchText.match(/(?:weight\s*(?:is)?|weighs|ഭാരം|തൂക്കം|വെയ്റ്റ്)[:\s]*(\d{1,3}(?:\.\d+)?)\s*(?:കിലോ|കിലോഗ്രാം|kg|kgs|kilos|kilo)?/i);
+    if (weightKeywordMatch) {
+      extractedWeight = parseFloat(weightKeywordMatch[1]);
+    } else {
+      // 3. Malayalam number word + kilo: "നൂറു കിലോ" -> 100
+      const mlWeightMatch = searchText.match(/(പത്ത്|ഇരുപത്|ഇരുപത്തിയഞ്ച്|മുപ്പത്|നാൽപ്പത്|അമ്പത്|അറുപത്|എഴുപത്|എൺപത്|തൊണ്ണൂറ്|നൂറ്|നൂറു|നൂറ)\s*(?:കിലോ|കിലോഗ്രാം|kg)/i);
+      if (mlWeightMatch && mlWeightMatch[1]) {
+        extractedWeight = parseMalayalamOrArabicNumber(mlWeightMatch[1]);
+      }
     }
   }
 
-  // C. Temperature: e.g. "101.2 F", "പനി 100", "താപനില 99"
+  if (extractedWeight !== null && !isNaN(extractedWeight) && extractedWeight > 0.5 && extractedWeight < 300) {
+    record.measurements.weight_kg = extractedWeight;
+  }
+
+  // C. Height: e.g. "height 160 cm", "height 5 feet 4 inches", "160 cm", "പൊക്കം 160", "ഉയരം 160", "80 മിറ്റർ ഹൈട്ടു"
+  let extractedHeight: number | null = null;
+  // Check feet and inches first: "5 feet 4 inches", "5 ft 4 in", "5 അടി 4 ഇഞ്ച്"
+  const feetInchesMatch = searchText.match(/(?:height|ഉയരം|പൊക്കം|നീളം)?[:\s]*(\d)\s*(?:feet|foot|ft|അടി)\s*(\d{1,2})?\s*(?:inches|inch|in|ഇഞ്ച്)?/i);
+  if (feetInchesMatch) {
+    const feet = parseInt(feetInchesMatch[1], 10);
+    const inches = feetInchesMatch[2] ? parseInt(feetInchesMatch[2], 10) : 0;
+    const totalCm = Math.round((feet * 30.48) + (inches * 2.54));
+    if (totalCm >= 30 && totalCm <= 250) {
+      extractedHeight = totalCm;
+    }
+  }
+
+  if (extractedHeight === null) {
+    // Check cm or phonetic ASR meter/height: "height 160 cm", "80 മിറ്റർ ഹൈട്ടു", "ഉയരം 160", "160 cm"
+    const heightCmMatch = searchText.match(/(?:height\s*(?:is)?|ഉയരം|പൊക്കം|ഹൈറ്റ്|ഹൈട്ടു)[:\s]*(\d{2,3}(?:\.\d+)?)\s*(?:cm|cms|സെ\.മീ|സെന്റിമീറ്റർ|മിറ്റർ|മീറ്റർ)?/i)
+      || searchText.match(/(\d{2,3}(?:\.\d+)?)\s*(?:cm|cms|സെ\.മീ|സെന്റിമീറ്റർ|മിറ്റർ|മീറ്റർ)\s*(?:height|ഹൈട്ടു|ഹൈറ്റും|ഹൈറ്റ്|ഉയരം|പൊക്കം)?/i);
+    if (heightCmMatch) {
+      const parsedCm = parseFloat(heightCmMatch[1]);
+      if (!isNaN(parsedCm) && parsedCm >= 30 && parsedCm <= 250) {
+        extractedHeight = Math.round(parsedCm);
+      }
+    }
+  }
+
+  if (extractedHeight !== null) {
+    record.measurements.height_cm = extractedHeight;
+  }
+
+  // D. Pulse / Heart Rate / Heartbeat: e.g. "heart rate 72", "heartbeat 72", "pulse 78 bpm", "പൾസ് 78", "ഹൃദയമിടിപ്പ് 72"
+  const pulseMatch = searchText.match(/(?:heart\s*rate(?:\s*is)?|heart\s*beat|pulse(?:\s*rate)?|പൾസ്|നാഡിമിടിപ്പ്|ഹൃദയമിടിപ്പ്|ഹാർട്ട്\s*ബീറ്റ്)[:\s]*(\d{2,3})\s*(?:bpm|ബീറ്റ്സ്)?/i)
+    || searchText.match(/(\d{2,3})\s*(?:bpm|beats\s*per\s*minute)/i);
+  if (pulseMatch) {
+    const pulse = parseInt(pulseMatch[1], 10);
+    if (!isNaN(pulse) && pulse >= 35 && pulse <= 220) {
+      record.measurements.pulse_bpm = pulse;
+    }
+  }
+
+  // E. Temperature: e.g. "101.2 F", "പനി 100", "താപനില 99"
   const tempMatch = rawText.match(/(?:താപനില|temperature|temp)[:\s]*(\d{2,3}(?:\.\d+)?)\s*(?:f|ഫാരൻഹീറ്റ്|°f)?/i)
     || rawText.match(/(\d{2,3}(?:\.\d+)?)\s*(?:°f|f\b|ഫാരൻഹീറ്റ്)/i);
   if (tempMatch) {
@@ -201,16 +411,7 @@ export function extractStructuredClinicalRecord(
     }
   }
 
-  // D. Pulse / Heart Rate: e.g. "പൾസ് 78", "pulse 78 bpm"
-  const pulseMatch = rawText.match(/(?:പൾസ്|നാഡിമിടിപ്പ്|pulse|heart\s*rate)[:\s]*(\d{2,3})\s*(?:bpm)?/i);
-  if (pulseMatch) {
-    const pulse = parseInt(pulseMatch[1], 10);
-    if (!isNaN(pulse) && pulse >= 40 && pulse <= 200) {
-      record.measurements.pulse_bpm = pulse;
-    }
-  }
-
-  // E. SpO2: e.g. "ഓക്സിജൻ 98%", "spo2 98"
+  // F. SpO2: e.g. "ഓക്സിജൻ 98%", "spo2 98"
   const spo2Match = rawText.match(/(?:ഓക്സിജൻ|spo2|oxygen)[:\s]*(\d{2,3})\s*(?:%|ശതമാനം)?/i);
   if (spo2Match) {
     const spo2 = parseInt(spo2Match[1], 10);
@@ -219,7 +420,7 @@ export function extractStructuredClinicalRecord(
     }
   }
 
-  // F. Blood Sugar: e.g. "ഷുഗർ 140", "sugar 160 mg/dl"
+  // G. Blood Sugar: e.g. "ഷുഗർ 140", "sugar 160 mg/dl"
   const sugarMatch = rawText.match(/(?:ഷുഗർ|ഷുഗർനില|രക്തത്തിലെ\s*പഞ്ചസാര|sugar|blood\s*sugar|rbs|fbs|ppbs)[:\s]*(\d{2,3}(?:\.\d+)?)/i);
   if (sugarMatch) {
     const sugar = parseFloat(sugarMatch[1]);
@@ -535,12 +736,14 @@ export function extractStructuredClinicalRecord(
   let score = 0.5; // Base confidence for non-empty transcript
   if (record.person.name) score += 0.1;
   if (record.person.age !== null) score += 0.1;
-  if (record.measurements.blood_pressure || record.measurements.weight_kg) score += 0.1;
-  if (record.health_status.complaints.length > 0) score += 0.1;
+  if (record.measurements.blood_pressure) score += 0.1;
+  if (record.measurements.weight_kg) score += 0.05;
+  if (record.measurements.height_cm || record.measurements.pulse_bpm) score += 0.05;
+  if (record.health_status.complaints.length > 0) score += 0.05;
   if (record.health_status.medications.length > 0) score += 0.05;
   if (record.follow_up.due_date) score += 0.05;
 
-  record.extraction.confidence_score = Math.min(0.98, parseFloat(score.toFixed(2)));
+  record.extraction.confidence_score = Math.min(0.99, parseFloat(score.toFixed(2)));
 
   return record;
 }

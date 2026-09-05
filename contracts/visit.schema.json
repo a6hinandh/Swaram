@@ -8,7 +8,9 @@
       "properties": {
         "systolic_bp": { "type": "number", "minimum": 60, "maximum": 250 },
         "diastolic_bp": { "type": "number", "minimum": 40, "maximum": 150 },
-        "weight_kg": { "type": "number", "minimum": 1, "maximum": 200 },
+        "weight_kg": { "type": "number", "minimum": 1, "maximum": 250 },
+        "height_cm": { "type": "number", "minimum": 20, "maximum": 250 },
+        "pulse_bpm": { "type": "number", "minimum": 30, "maximum": 220 },
         "temperature_c": { "type": "number", "minimum": 34, "maximum": 43 },
         "hemoglobin_g_dl": { "type": "number", "minimum": 3, "maximum": 20 }
       },

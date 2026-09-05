@@ -17,11 +17,8 @@ class MalayalamASRAdapter:
             Tuple[transcript: str, confidence: float]
         """
         if self.endpoint == "mock" or not self.endpoint.startswith("http"):
-            # Mock / Prototype Simulation for reproducible testing
-            return (
-                "ലക്ഷ്മിയെ കണ്ടു. ബിപി 130/85 ഉണ്ട്. ഭാരം 58 കിലോ. അയൺ ഗുളിക കൊടുത്തു. അടുത്ത ചെക്കപ്പ് അടുത്ത വ്യാഴാഴ്ച.",
-                0.94
-            )
+            # No hardcoded mock transcript; returns empty string if unconfigured
+            return ("", 0.0)
         
         # In production, invokes AI4Bharat IndicConformer ASR API or PyTorch pipeline
         # response = requests.post(f"{self.endpoint}/asr/malayalam", files={"audio": audio_path_or_bytes})

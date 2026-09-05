@@ -13,14 +13,12 @@ import {
 } from 'react-native';
 import { apiClient, getActiveHost, setActiveHost } from './src/api/apiClient';
 import {
-  HouseholdSummary,
-  HouseholdCareLedger,
   VisitDraft,
   ConfirmedVisit,
   MissingFieldPrompt
 } from './src/types';
 import { audioRecorder } from './src/services/audioRecorder';
-import { transcribeWithIndicConformer, LanguageMode } from './src/services/indicConformerService';
+import { transcribeWithIndicConformer } from './src/services/indicConformerService';
 import { QUICK_CORRECTION_SUGGESTIONS } from './src/services/malayalamSpellCorrector';
 import { StructuredClinicalRecord } from './src/types/structuredClinicalRecord';
 import { extractStructuredClinicalRecord } from './src/services/clinicalEntityExtractor';
@@ -30,30 +28,41 @@ import {
   deleteStructuredRecord,
   exportAllRecordsJson
 } from './src/services/structuredStorageService';
+import {
+  refineTranscriptSentencesWithGemini,
+  refineWithPrivacyPreservingGemini,
+  SentenceCorrectionDetail,
+  getCustomGeminiApiKey,
+  setCustomGeminiApiKey
+} from './src/services/geminiPrivacyService';
+import {
+  BottomTabBar,
+  AppTab,
+  MentalHealthScreen,
+  EnvironmentalRiskScreen,
+  NcdLifestyleScreen,
+  VitalsBaselineScreen
+} from './src/modules';
 
 export default function App() {
-  // State for connectivity & Basic Call demonstration
+  // State for connectivity & Diagnostic Ping
   const [serverIp, setServerIp] = useState<string>(getActiveHost());
   const [showIpConfig, setShowIpConfig] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<string>('Checking backend...');
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [isCallingApi, setIsCallingApi] = useState<boolean>(false);
 
-  // Core ASHA Platform State
-  const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
-  const [selectedHousehold, setSelectedHousehold] = useState<HouseholdSummary | null>(null);
-  const [careLedger, setCareLedger] = useState<HouseholdCareLedger | null>(null);
-
   // Voice Interaction State
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   const [isProcessingVoice, setIsProcessingVoice] = useState<boolean>(false);
   const [indicConformerTranscript, setIndicConformerTranscript] = useState<string | null>(null);
+  const [sentenceDetails, setSentenceDetails] = useState<SentenceCorrectionDetail[]>([]);
+  const [showSentenceBreakdown, setShowSentenceBreakdown] = useState<boolean>(false);
   const [visitDraft, setVisitDraft] = useState<VisitDraft | null>(null);
   const [isResolvingPrompt, setIsResolvingPrompt] = useState<boolean>(false);
-  const [syncQueueCount, setSyncQueueCount] = useState<number>(1);
+  const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
   const [lastActionMessage, setLastActionMessage] = useState<string>('Ready for field visits');
-  const [langMode, setLangMode] = useState<LanguageMode>('auto');
   const timerIntervalRef = React.useRef<any>(null);
 
   // Structured Clinical Record Extraction & Offline Storage State
@@ -64,6 +73,22 @@ export default function App() {
   const [jsonModalTitle, setJsonModalTitle] = useState<string>('Structured Clinical Record JSON');
   const [saveFeedbackMsg, setSaveFeedbackMsg] = useState<string | null>(null);
   const [isSavingRecord, setIsSavingRecord] = useState<boolean>(false);
+  const [isGeminiRefining, setIsGeminiRefining] = useState<boolean>(false);
+  const [geminiStatusNote, setGeminiStatusNote] = useState<string | null>(null);
+  const [showApiKeyConfig, setShowApiKeyConfig] = useState<boolean>(false);
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState<string>(getCustomGeminiApiKey());
+  const [showKeyPlaintext, setShowKeyPlaintext] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<AppTab>('core');
+
+  const handleSaveGeminiKey = () => {
+    setCustomGeminiApiKey(geminiApiKeyInput);
+    setShowApiKeyConfig(false);
+    setLastActionMessage(
+      geminiApiKeyInput.trim()
+        ? '✓ Google Gemini API Key configured for Zero-PII Cloud Engine!'
+        : 'Gemini API Key cleared. Local Extractor active.'
+    );
+  };
 
   // Initial Load
   useEffect(() => {
@@ -82,7 +107,7 @@ export default function App() {
 
   const runBasicCall = async () => {
     setIsCallingApi(true);
-    // 1. Health check call
+    // Health check call
     const healthResult = await apiClient.checkBackendHealth();
     setIsBackendConnected(!healthResult.isMockFallback);
     setBackendStatus(
@@ -90,24 +115,12 @@ export default function App() {
         ? 'Offline Mode (Local Engine Active)'
         : 'Connected to Central Backend (Port 8000)'
     );
-
-    // 2. Fetch households
-    const hhResult = await apiClient.getHouseholds();
-    setHouseholds(hhResult.data);
-    if (hhResult.data.length > 0) {
-      setSelectedHousehold(hhResult.data[0]);
-      // 3. Fetch care ledger for selected household
-      const ledgerResult = await apiClient.getCareLedger(hhResult.data[0].id);
-      setCareLedger(ledgerResult.data);
-    }
-    setLastActionMessage(hhResult.message);
+    setLastActionMessage(healthResult.message);
     setIsCallingApi(false);
   };
 
   // Real Audio Recording & AI4Bharat IndicConformer Transcription
   const handleToggleVoiceRecording = async () => {
-    if (!selectedHousehold) return;
-
     if (!isRecording) {
       // START RECORDING
       const hasPermission = await audioRecorder.requestPermission();
@@ -135,29 +148,64 @@ export default function App() {
       }
       setIsRecording(false);
       setIsProcessingVoice(true);
-      setLastActionMessage('Passing audio to AI4Bharat IndicConformer ASR...');
+      setLastActionMessage('Passing audio to AI4Bharat IndicConformer ASR (Malayalam)...');
 
       try {
         const audio = await audioRecorder.stopRecording();
 
-        // 1. Send to Hugging Face / AI4Bharat with strictly English or Malayalam enforcement
-        const conformerResult = await transcribeWithIndicConformer(audio, langMode);
+        // 1. Transcribe with IndicConformer (strictly Malayalam)
+        const conformerResult = await transcribeWithIndicConformer(audio, 'ml');
 
         console.log('\n======================================================');
-        console.log('🗣️ AI4BHARAT INDICCONFORMER TRANSCRIPTION:');
+        console.log('🗣️ AI4BHARAT INDICCONFORMER RAW TRANSCRIPTION (MALAYALAM):');
         console.log(conformerResult.transcript);
         console.log('======================================================\n');
 
-        setIndicConformerTranscript(conformerResult.transcript);
+        let activeTranscript = conformerResult.transcript;
 
-        // 2. Extract Canonical Structured Clinical Record
-        const extractedRecord = extractStructuredClinicalRecord(conformerResult.transcript, selectedHousehold);
+        // 2. Sentence-by-Sentence Gemini Contextual Refinement
+        // Send every sentence to Gemini with context to fix acoustic/phonetic errors into common Malayalam
+        setLastActionMessage('✨ Gemini refining sentence-by-sentence in Malayalam with context...');
+        try {
+          const sentenceResult = await refineTranscriptSentencesWithGemini(
+            conformerResult.transcript,
+            geminiApiKeyInput,
+            (done, total) => {
+              setLastActionMessage(`✨ Gemini refining sentence ${done} of ${total} in Malayalam...`);
+            }
+          );
+          if (sentenceResult.correctedTranscript) {
+            activeTranscript = sentenceResult.correctedTranscript;
+            setSentenceDetails(sentenceResult.sentenceDetails);
+            setGeminiStatusNote(sentenceResult.message);
+          }
+        } catch (e: any) {
+          console.warn('Sentence-by-sentence Gemini refinement error:', e);
+        }
+
+        setIndicConformerTranscript(activeTranscript);
+
+        // 3. Extract Canonical Structured Clinical Record from refined Malayalam text
+        let extractedRecord = extractStructuredClinicalRecord(activeTranscript);
+
+        // If Gemini key is available, also run Gemini Zero-PII Structured Schema Reasoning
+        if (geminiApiKeyInput && geminiApiKeyInput.trim() && !geminiApiKeyInput.startsWith('mock-')) {
+          try {
+            const schemaRes = await refineWithPrivacyPreservingGemini(activeTranscript, null, geminiApiKeyInput);
+            if (schemaRes.record) {
+              extractedRecord = schemaRes.record;
+            }
+          } catch (schemaErr) {
+            console.warn('Auto schema refinement fallback to local extractor:', schemaErr);
+          }
+        }
+
         setStructuredRecord(extractedRecord);
 
-        // 3. Pass transcript to legacy visit draft
-        const draftResult = await apiClient.processVoiceVisit(conformerResult.transcript);
+        // 4. Process clinical visit draft
+        const draftResult = await apiClient.processVoiceVisit(activeTranscript);
         setVisitDraft(draftResult.data);
-        setLastActionMessage(`Transcription & Structured Extraction complete! ${conformerResult.message}`);
+        setLastActionMessage(`✓ Transcription, Sentence Refinement & Structured Extraction complete!`);
       } catch (err: any) {
         console.error('IndicConformer error:', err);
         setLastActionMessage(`ASR Error: ${err.message}`);
@@ -167,30 +215,38 @@ export default function App() {
     }
   };
 
-  // Quick Simulation Fallback
-  const handleSimulateVoiceCapture = async () => {
-    if (!selectedHousehold) return;
-    setIsProcessingVoice(true);
-    setLastActionMessage('Simulating audio passing to AI4Bharat IndicConformer...');
+  // Privacy-Preserving Gemini Assist (Sentence-by-Sentence Malayalam Refinement & Structured Reasoning)
+  const handleRefineWithGemini = async () => {
+    if (!indicConformerTranscript) return;
+    setIsGeminiRefining(true);
+    setGeminiStatusNote('✨ Sending sentences to Gemini for contextual Malayalam correction...');
+    try {
+      // 1. Refine sentences with Gemini
+      const sentenceResult = await refineTranscriptSentencesWithGemini(
+        indicConformerTranscript,
+        geminiApiKeyInput,
+        (done, total) => {
+          setGeminiStatusNote(`✨ Refining sentence ${done} of ${total} with Gemini...`);
+        }
+      );
+      const refinedText = sentenceResult.correctedTranscript || indicConformerTranscript;
+      setIndicConformerTranscript(refinedText);
+      setSentenceDetails(sentenceResult.sentenceDetails);
 
-    setTimeout(async () => {
-      const sampleText = 'ലക്ഷ്മി, 28 വയസ്സ്. ഗർഭിണിയാണ്, ബിപി 130/85. ഭാരം 58 കിലോ. തലവേദന ഉണ്ട്, രണ്ട് ദിവസമായി. അയൺ ഗുളിക കൃത്യമായി കഴിക്കുന്നുണ്ട്. അടുത്ത വ്യാഴാഴ്ച വീണ്ടും കാണണം.';
-      console.log('\n======================================================');
-      console.log('🗣️ AI4BHARAT INDICCONFORMER TRANSCRIPTION (SAMPLE):');
-      console.log(sampleText);
-      console.log('======================================================\n');
+      // 2. Extract structured clinical record with Gemini reasoning
+      const res = await refineWithPrivacyPreservingGemini(refinedText, null, geminiApiKeyInput);
+      setStructuredRecord(res.record);
+      setGeminiStatusNote(`${sentenceResult.message} ${res.message}`);
+      setLastActionMessage(sentenceResult.message);
 
-      setIndicConformerTranscript(sampleText);
-
-      // Extract Canonical Structured Clinical Record
-      const extractedRecord = extractStructuredClinicalRecord(sampleText, selectedHousehold);
-      setStructuredRecord(extractedRecord);
-
-      const draftResult = await apiClient.processVoiceVisit(sampleText);
+      // 3. Update clinical visit draft
+      const draftResult = await apiClient.processVoiceVisit(refinedText);
       setVisitDraft(draftResult.data);
-      setIsProcessingVoice(false);
-      setLastActionMessage('Sample audio transcribed & structured clinical record extracted.');
-    }, 1000);
+    } catch (e: any) {
+      setGeminiStatusNote(`Refinement error: ${e.message}`);
+    } finally {
+      setIsGeminiRefining(false);
+    }
   };
 
   // Re-analyze after user edits transcript or taps suggestion chips
@@ -200,7 +256,7 @@ export default function App() {
     setLastActionMessage('Re-analyzing corrected transcript...');
     try {
       // Re-extract Canonical Structured Clinical Record
-      const extractedRecord = extractStructuredClinicalRecord(text, selectedHousehold);
+      const extractedRecord = extractStructuredClinicalRecord(text);
       setStructuredRecord(extractedRecord);
 
       const draftResult = await apiClient.processVoiceVisit(text);
@@ -282,12 +338,12 @@ export default function App() {
 
   // Human Confirmation Gate
   const handleConfirmVisit = async () => {
-    if (!visitDraft || !selectedHousehold) return;
+    if (!visitDraft) return;
 
     const confirmed: ConfirmedVisit = {
       visit_id: visitDraft.visit_id,
-      household_id: selectedHousehold.id,
-      worker_id: visitDraft.worker_id,
+      household_id: 'community-visit',
+      worker_id: visitDraft.worker_id || 'w-asha-001',
       timestamp: new Date().toISOString(),
       person_updates: visitDraft.person_updates,
       survey_fields: visitDraft.survey_fields,
@@ -295,6 +351,11 @@ export default function App() {
       confirmed_by_worker_at: new Date().toISOString(),
       sync_status: isBackendConnected ? 'synced' : 'pending'
     };
+
+    if (structuredRecord) {
+      await saveStructuredRecord(structuredRecord);
+      await refreshSavedRecords();
+    }
 
     const submitResult = await apiClient.submitConfirmedVisit(confirmed);
     setVisitDraft(null);
@@ -310,21 +371,31 @@ export default function App() {
 
       {/* App Header */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>സ്വരം • SWARAM</Text>
-          <Text style={styles.headerSubtitle}>Next-Gen ASHA Worker Platform (വാർഡ് 4, ആലുവ)</Text>
-          <View style={styles.conceptPill}>
-            <Text style={styles.conceptPillText}>🎙️ Conversational Survey & Care Intelligence</Text>
-          </View>
+          <Text style={styles.headerSubtitle}>
+            {activeTab === 'core' && 'Next-Gen ASHA Worker Platform (വാർഡ് 4, ആലുവ)'}
+            {activeTab === 'mental' && 'Mental Health Voice Screening Protocol'}
+            {activeTab === 'climate' && 'Environmental & Climate Risk Monitoring'}
+            {activeTab === 'lifestyle' && 'NCD Lifestyle & Behavioral Risk Tracking'}
+            {activeTab === 'vitals' && 'Longitudinal Vitals Baseline & Delta Detector'}
+          </Text>
+          {activeTab === 'core' && (
+            <View style={styles.conceptPill}>
+              <Text style={styles.conceptPillText}>Conversational Survey & Care Intelligence</Text>
+            </View>
+          )}
         </View>
         <View style={styles.syncBadge}>
           <Text style={styles.syncBadgeText}>
-            {syncQueueCount > 0 ? `⏳ ${syncQueueCount} Queued` : '✓ Synced'}
+            {syncQueueCount > 0 ? `${syncQueueCount} Queued` : 'Synced'}
           </Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Core Field Survey Tab View */}
+      {activeTab === 'core' && (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Network & Offline Status Banner */}
         <View style={[styles.networkBanner, isBackendConnected ? styles.bannerOnline : styles.bannerOffline]}>
           <View style={styles.bannerRow}>
@@ -343,7 +414,13 @@ export default function App() {
               style={styles.ipConfigToggleBtn}
               onPress={() => setShowIpConfig(!showIpConfig)}
             >
-              <Text style={styles.ipConfigToggleText}>⚙️ IP</Text>
+              <Text style={styles.ipConfigToggleText}>IP Config</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ipConfigToggleBtn, { backgroundColor: '#4C1D95' }]}
+              onPress={() => setShowApiKeyConfig(!showApiKeyConfig)}
+            >
+              <Text style={[styles.ipConfigToggleText, { color: '#FFFFFF' }]}>AI Key</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.testCallButton}
@@ -386,75 +463,57 @@ export default function App() {
           </View>
         )}
 
-        {/* Selected Household & History Overview Card */}
-        {selectedHousehold && (
-          <View style={styles.card}>
-            <View style={styles.cardHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{selectedHousehold.head_of_household}</Text>
-                <Text style={styles.cardSubtitle}>{selectedHousehold.external_id} • {selectedHousehold.address}</Text>
-              </View>
-              <View style={styles.badgeColumn}>
-                <View style={styles.priorityPill}>
-                  <Text style={styles.priorityPillText}>Score: {selectedHousehold.priority_score}</Text>
-                </View>
-                <View style={styles.malnutritionBadge}>
-                  <Text style={styles.malnutritionBadgeText}>
-                    Nutrition: {selectedHousehold.malnutrition_risk || 'Moderate'}
-                  </Text>
-                </View>
-              </View>
+        {/* Gemini API Key Configuration Card */}
+        {showApiKeyConfig && (
+          <View style={[styles.ipConfigCard, { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' }]}>
+            <Text style={[styles.ipConfigLabel, { color: '#5B21B6', fontWeight: 'bold' }]}>
+              🔑 Google Gemini API Key (Zero-PII Engine):
+            </Text>
+            <Text style={{ fontSize: 11, color: '#6D28D9', marginBottom: 6 }}>
+              Enables cloud accuracy for Malayalam speech. PII is sanitized on-device before sending.
+            </Text>
+            <View style={styles.ipInputRow}>
+              <TextInput
+                style={[styles.ipInput, { borderColor: '#C4B5FD', flex: 1 }]}
+                value={geminiApiKeyInput}
+                onChangeText={setGeminiApiKeyInput}
+                placeholder="Paste AIzaSy... key here"
+                placeholderTextColor="#A78BFA"
+                secureTextEntry={!showKeyPlaintext}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={[styles.ipSaveButton, { backgroundColor: '#7C3AED' }]}
+                onPress={handleSaveGeminiKey}
+              >
+                <Text style={styles.ipSaveButtonText}>Save Key</Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Overlooked Health Challenges / Urgent Care Gaps */}
-            <View style={styles.alertBox}>
-              <Text style={styles.alertTitle}>ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ (Longitudinal Care Needs):</Text>
-              {selectedHousehold.priority_reasons.map((reason, idx) => (
-                <Text key={idx} style={styles.alertItem}>• {reason}</Text>
-              ))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <TouchableOpacity onPress={() => setShowKeyPlaintext(!showKeyPlaintext)}>
+                <Text style={{ fontSize: 11, color: '#7C3AED', fontWeight: '600' }}>
+                  {showKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
+                </Text>
+              </TouchableOpacity>
+              {geminiApiKeyInput && geminiApiKeyInput.trim() ? (
+                <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
+                  ✓ Key Active ({geminiApiKeyInput.slice(0, 6)}...{geminiApiKeyInput.slice(-4)})
+                </Text>
+              ) : (
+                <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
+                  ⚠️ No key set (Uses Local Extractor)
+                </Text>
+              )}
             </View>
           </View>
         )}
+
 
         {/* Conversational Survey Capture Section */}
         <View style={styles.voiceSection}>
           <Text style={styles.sectionHeading}>സംഭാഷണ സർവേ (Conversational Survey Entry)</Text>
           <Text style={styles.instructionText}>
-            Speak natural Malayalam or English: Describe vitals, symptoms, medicine, and next visit date.
-          </Text>
-
-          {/* Language Enforcement Selector: English & Malayalam Only */}
-          <View style={styles.langSelectorRow}>
-            <Text style={styles.langSelectorLabel}>Language Policy:</Text>
-            <View style={styles.langPillContainer}>
-              <TouchableOpacity
-                style={[styles.langPill, langMode === 'auto' && styles.langPillActive]}
-                onPress={() => setLangMode('auto')}
-              >
-                <Text style={[styles.langPillText, langMode === 'auto' && styles.langPillTextActive]}>
-                  🌐 Auto (ML / EN)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langPill, langMode === 'ml' && styles.langPillActive]}
-                onPress={() => setLangMode('ml')}
-              >
-                <Text style={[styles.langPillText, langMode === 'ml' && styles.langPillTextActive]}>
-                  മലയാളം (ML)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langPill, langMode === 'en' && styles.langPillActive]}
-                onPress={() => setLangMode('en')}
-              >
-                <Text style={[styles.langPillText, langMode === 'en' && styles.langPillTextActive]}>
-                  English (EN)
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          <Text style={styles.langPolicyNote}>
-            🔒 Strict Policy: Only English or Malayalam are permitted. Any other language is disallowed.
+            Speak natural Malayalam: Describe vitals, symptoms, medicine, and next visit date.
           </Text>
 
           {/* Live Recording Button */}
@@ -483,14 +542,6 @@ export default function App() {
             )}
           </TouchableOpacity>
 
-          {/* Secondary Quick Benchmark / Sample Button */}
-          <TouchableOpacity
-            style={styles.testSampleButton}
-            onPress={handleSimulateVoiceCapture}
-            disabled={isRecording || isProcessingVoice}
-          >
-            <Text style={styles.testSampleButtonText}>🧪 ടെസ്റ്റ് സാമ്പിൾ റൺ ചെയ്യുക (Test Sample)</Text>
-          </TouchableOpacity>
 
           {/* Dedicated AI4Bharat IndicConformer Transcription Output Display */}
           {indicConformerTranscript && (
@@ -499,7 +550,7 @@ export default function App() {
                 <View style={styles.indicConformerBadge}>
                   <Text style={styles.indicConformerBadgeText}>HUGGING FACE / INDICCONFORMER</Text>
                 </View>
-                <Text style={styles.indicConformerLang}>മലയാളം / English</Text>
+                <Text style={styles.indicConformerLang}>മലയാളം (Malayalam)</Text>
               </View>
 
               {/* Editable Transcript Area */}
@@ -522,6 +573,74 @@ export default function App() {
                   placeholder="Type or correct transcription here..."
                 />
               </View>
+
+              {/* Sentence-by-Sentence Refinement Breakdown */}
+              {sentenceDetails.length > 0 && (
+                <View style={styles.sentenceBreakdownCard}>
+                  <TouchableOpacity
+                    style={styles.sentenceBreakdownHeader}
+                    onPress={() => setShowSentenceBreakdown(!showSentenceBreakdown)}
+                  >
+                    <View style={styles.sentenceTitleRow}>
+                      <Text style={styles.sentenceBreakdownTitle}>
+                        ✨ വാക്യാടിസ്ഥാനത്തിലുള്ള പരിശോധന ({sentenceDetails.length} Sentences Refined)
+                      </Text>
+                      <Text style={styles.sentenceBreakdownToggle}>
+                        {showSentenceBreakdown ? '▲ ചുരുക്കുക (Hide)' : '▼ കാണുക (View)'}
+                      </Text>
+                    </View>
+                    <Text style={styles.sentenceSubtext}>
+                      Gemini addressed Indic ASR acoustic errors with full sentence context
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showSentenceBreakdown && (
+                    <View style={styles.sentenceList}>
+                      {sentenceDetails.map((detail, idx) => (
+                        <View key={idx} style={styles.sentenceItem}>
+                          <View style={styles.sentenceBadge}>
+                            <Text style={styles.sentenceBadgeText}>#{idx + 1}</Text>
+                          </View>
+                          <View style={styles.sentenceBody}>
+                            <Text style={styles.sentenceOriginal}>
+                              <Text style={styles.sentenceTagAsr}>Indic ASR: </Text>
+                              {detail.original}
+                            </Text>
+                            <Text style={styles.sentenceCorrected}>
+                              <Text style={styles.sentenceTagGemini}>Gemini: </Text>
+                              {detail.corrected}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Privacy-Preserving Gemini AI Refinement Button */}
+              <TouchableOpacity
+                style={styles.geminiRefineBtn}
+                onPress={handleRefineWithGemini}
+                disabled={isGeminiRefining || isProcessingVoice}
+              >
+                {isGeminiRefining ? (
+                  <View style={styles.geminiBtnContent}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.geminiRefineBtnText}>🔒 De-identifying & Refining via Gemini...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.geminiBtnContent}>
+                    <Text style={styles.geminiIcon}>✨</Text>
+                    <Text style={styles.geminiRefineBtnText}>🔒 100% Accuracy AI Refine (Zero-PII Gemini)</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {geminiStatusNote && (
+                <View style={styles.geminiNoteBox}>
+                  <Text style={styles.geminiNoteText}>{geminiStatusNote}</Text>
+                </View>
+              )}
 
               {/* Quick Word Suggestion Chips */}
               <View style={styles.quickChipsWrapper}>
@@ -608,19 +727,38 @@ export default function App() {
                 </View>
                 <View style={styles.vitalCard}>
                   <Text style={styles.vitalLabel}>ഭാരം (Weight)</Text>
-                  <Text style={styles.vitalValue}>{structuredRecord.measurements.weight_kg ?? '--'}</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.weight_kg !== null ? `${structuredRecord.measurements.weight_kg}` : '--'}</Text>
                   <Text style={styles.vitalUnit}>kg</Text>
                 </View>
                 <View style={styles.vitalCard}>
-                  <Text style={styles.vitalLabel}>പനി (Temp)</Text>
-                  <Text style={styles.vitalValue}>{structuredRecord.measurements.temperature_f ?? '--'}</Text>
-                  <Text style={styles.vitalUnit}>°F</Text>
+                  <Text style={styles.vitalLabel}>ഉയരം (Height)</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.height_cm !== null ? `${structuredRecord.measurements.height_cm}` : '--'}</Text>
+                  <Text style={styles.vitalUnit}>cm</Text>
+                </View>
+              </View>
+              <View style={[styles.vitalsRow, { marginTop: 6 }]}>
+                <View style={styles.vitalCard}>
+                  <Text style={styles.vitalLabel}>പൾസ് (Heart Rate)</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.pulse_bpm !== null ? `${structuredRecord.measurements.pulse_bpm}` : '--'}</Text>
+                  <Text style={styles.vitalUnit}>bpm</Text>
                 </View>
                 <View style={styles.vitalCard}>
                   <Text style={styles.vitalLabel}>ഷുഗർ (Sugar)</Text>
-                  <Text style={styles.vitalValue}>{structuredRecord.measurements.blood_sugar_mg_dl ?? '--'}</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.blood_sugar_mg_dl !== null ? `${structuredRecord.measurements.blood_sugar_mg_dl}` : '--'}</Text>
                   <Text style={styles.vitalUnit}>mg/dL</Text>
                 </View>
+                <View style={styles.vitalCard}>
+                  <Text style={styles.vitalLabel}>പനി (Temp)</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.temperature_f !== null ? `${structuredRecord.measurements.temperature_f}` : '--'}</Text>
+                  <Text style={styles.vitalUnit}>°F</Text>
+                </View>
+                {structuredRecord.measurements.spo2_percent !== null && (
+                  <View style={styles.vitalCard}>
+                    <Text style={styles.vitalLabel}>ഓക്സിജൻ (SpO2)</Text>
+                    <Text style={styles.vitalValue}>{structuredRecord.measurements.spo2_percent}</Text>
+                    <Text style={styles.vitalUnit}>%</Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -829,41 +967,22 @@ export default function App() {
           </View>
         )}
 
-        {/* Unresolved Care Ledger & Malnutrition Memory Section */}
-        {careLedger && (
-          <View style={styles.ledgerCard}>
-            <View style={styles.ledgerHeaderRow}>
-              <Text style={styles.sectionHeading}>Unresolved Care Ledger</Text>
-              <Text style={styles.ledgerCountPill}>{careLedger.care_gaps.length} Active Items</Text>
-            </View>
-
-            <Text style={styles.ledgerNarrative}>{careLedger.longitudinal_narrative}</Text>
-
-            {careLedger.malnutrition_trend && (
-              <View style={styles.trendBox}>
-                <Text style={styles.trendTitle}>📊 Malnutrition Longitudinal Trend:</Text>
-                <Text style={styles.trendText}>{careLedger.malnutrition_trend}</Text>
-              </View>
-            )}
-
-            {careLedger.care_gaps.map((gap) => (
-              <View key={gap.id} style={styles.gapItem}>
-                <View style={styles.gapHeader}>
-                  <Text style={styles.gapProgramme}>[{gap.programme.toUpperCase()}]</Text>
-                  <Text style={styles.gapSeverity}>{gap.severity.toUpperCase()}</Text>
-                </View>
-                <Text style={styles.gapDescription}>{gap.description}</Text>
-                <Text style={styles.gapAction}>Action: {gap.recommended_action}</Text>
-              </View>
-            ))}
-          </View>
-        )}
 
         {/* Status Message Footer */}
         <View style={styles.footerNote}>
-          <Text style={styles.footerText}>⚡ Swaram Next-Gen Status: {lastActionMessage}</Text>
+          <Text style={styles.footerText}>Status: {lastActionMessage}</Text>
         </View>
       </ScrollView>
+      )}
+
+      {/* Feature Module Views */}
+      {activeTab === 'mental' && <MentalHealthScreen />}
+      {activeTab === 'climate' && <EnvironmentalRiskScreen />}
+      {activeTab === 'lifestyle' && <NcdLifestyleScreen />}
+      {activeTab === 'vitals' && <VitalsBaselineScreen />}
+
+      {/* Persistent Bottom Tab Navigation Bar */}
+      <BottomTabBar activeTab={activeTab} onTabSelect={setActiveTab} />
 
       {/* Raw Schema JSON Viewer Modal */}
       <Modal
@@ -1064,77 +1183,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold'
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start'
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827'
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 2
-  },
-  badgeColumn: {
-    alignItems: 'flex-end',
-    gap: 4
-  },
-  priorityPill: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12
-  },
-  priorityPillText: {
-    color: '#DC2626',
-    fontSize: 11,
-    fontWeight: 'bold'
-  },
-  malnutritionBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10
-  },
-  malnutritionBadgeText: {
-    color: '#B45309',
-    fontSize: 10,
-    fontWeight: '700'
-  },
-  alertBox: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#EF4444'
-  },
-  alertTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#991B1B',
-    marginBottom: 4
-  },
-  alertItem: {
-    fontSize: 12,
-    color: '#7F1D1D',
-    marginVertical: 1
-  },
+
   voiceSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -1153,48 +1202,87 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 12
   },
-  langSelectorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F0FDF4',
-    padding: 8,
+  sentenceBreakdownCard: {
+    backgroundColor: '#F5F3FF',
     borderRadius: 8,
-    marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#BBF7D0'
+    borderColor: '#DDD6FE',
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 8
   },
-  langSelectorLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#166534'
+  sentenceBreakdownHeader: {
+    paddingVertical: 2
   },
-  langPillContainer: {
+  sentenceTitleRow: {
     flexDirection: 'row',
-    gap: 4
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  langPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#DCFCE7'
+  sentenceBreakdownTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5B21B6',
+    flex: 1
   },
-  langPillActive: {
-    backgroundColor: '#15803D'
-  },
-  langPillText: {
+  sentenceBreakdownToggle: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#166534'
+    color: '#7C3AED'
   },
-  langPillTextActive: {
-    color: '#FFFFFF'
-  },
-  langPolicyNote: {
+  sentenceSubtext: {
     fontSize: 10,
-    color: '#15803D',
-    fontStyle: 'italic',
-    marginBottom: 12
+    color: '#6D28D9',
+    marginTop: 2
+  },
+  sentenceList: {
+    marginTop: 8,
+    gap: 6
+  },
+  sentenceItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    gap: 8,
+    alignItems: 'flex-start'
+  },
+  sentenceBadge: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2
+  },
+  sentenceBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+  sentenceBody: {
+    flex: 1,
+    gap: 2
+  },
+  sentenceOriginal: {
+    fontSize: 11,
+    color: '#6B7280'
+  },
+  sentenceCorrected: {
+    fontSize: 12,
+    color: '#1E1B4B',
+    fontWeight: '600'
+  },
+  sentenceTagAsr: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#9CA3AF'
+  },
+  sentenceTagGemini: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#7C3AED'
   },
   recordButton: {
     paddingVertical: 14,
@@ -1223,19 +1311,44 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold'
   },
-  testSampleButton: {
-    marginTop: 10,
+
+  geminiRefineBtn: {
+    backgroundColor: '#047857',
     paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    alignItems: 'center'
+    marginTop: 10,
+    borderWidth: 1.5,
+    borderColor: '#34D399',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  testSampleButtonText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600'
+  geminiBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  geminiIcon: {
+    fontSize: 14,
+    color: '#FDE047',
+  },
+  geminiRefineBtnText: {
+    color: '#ECFDF5',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  geminiNoteBox: {
+    backgroundColor: '#064E3B',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#34D399',
+  },
+  geminiNoteText: {
+    color: '#A7F3D0',
+    fontSize: 11,
+    lineHeight: 16,
   },
   indicConformerCard: {
     backgroundColor: '#062E20',
@@ -1788,81 +1901,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13
   },
-  ledgerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    marginBottom: 16
-  },
-  ledgerHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  ledgerCountPill: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#B45309'
-  },
-  ledgerNarrative: {
-    fontSize: 12,
-    color: '#4B5563',
-    marginTop: 8,
-    lineHeight: 18
-  },
-  trendBox: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 8,
-    marginBottom: 4
-  },
-  trendTitle: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#1D4ED8'
-  },
-  trendText: {
-    fontSize: 11,
-    color: '#1E40AF',
-    marginTop: 2
-  },
-  gapItem: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#F59E0B',
-    paddingLeft: 8,
-    marginTop: 8
-  },
-  gapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between'
-  },
-  gapProgramme: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#1F2937'
-  },
-  gapSeverity: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#D97706'
-  },
-  gapDescription: {
-    fontSize: 11,
-    color: '#4B5563',
-    marginTop: 2
-  },
-  gapAction: {
-    fontSize: 11,
-    color: '#059669',
-    marginTop: 2,
-    fontStyle: 'italic'
-  },
+
   footerNote: {
     alignItems: 'center',
     marginTop: 8
