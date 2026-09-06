@@ -15,6 +15,8 @@ import { calculatePhq2Score } from './services/mentalHealthService';
 import { HouseholdMember, HouseholdSummary, ConfirmedVisit } from '../../types';
 import { apiClient } from '../../api/apiClient';
 import { HouseholdPersonSelector } from '../../components/HouseholdPersonSelector';
+import { AiReportSummaryCard } from '../../components/AiReportSummaryCard';
+import { generateMentalHealthSummary } from '../../services/geminiReportSummaryService';
 
 interface MentalHealthScreenProps {
   activePerson?: HouseholdMember | null;
@@ -51,6 +53,11 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
   const [localLoadingMembers, setLocalLoadingMembers] = useState<boolean>(isLoadingMembers);
   const [isManuallyChanged, setIsManuallyChanged] = useState<boolean>(false);
 
+  // AI Longitudinal Summary State
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isLoadingAiSummary, setIsLoadingAiSummary] = useState<boolean>(false);
+  const [historicalEncountersCount, setHistoricalEncountersCount] = useState<number>(0);
+
   // Synchronize with survey page updates
   useEffect(() => {
     if (activeHousehold) {
@@ -61,8 +68,9 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
   useEffect(() => {
     if (activePerson) {
       setCurrentPerson(activePerson);
+      loadAiSummaryForPerson(activePerson.person_id, activePerson.name);
     }
-  }, [activePerson]);
+  }, [activePerson?.person_id]);
 
   useEffect(() => {
     if (households && households.length > 0) {
@@ -84,8 +92,29 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
   useEffect(() => {
     if (!households || households.length === 0) {
       loadFallbackHouseholds();
+    } else if (currentPerson) {
+      loadAiSummaryForPerson(currentPerson.person_id, currentPerson.name);
     }
   }, []);
+
+  const loadAiSummaryForPerson = async (personId?: string, personName?: string) => {
+    const targetId = personId || currentPerson?.person_id || activePerson?.person_id || 'p-radhamani-01';
+    const targetName = personName || currentPerson?.name || activePerson?.name || 'Radhamani P.';
+    setIsLoadingAiSummary(true);
+    try {
+      const res = await apiClient.getPersonEncounters(targetId);
+      const encounters = (res.data && Array.isArray(res.data)) ? res.data : [];
+      setHistoricalEncountersCount(encounters.length);
+
+      const result = await generateMentalHealthSummary(encounters, targetName);
+      setAiSummary(result.summary);
+    } catch (err) {
+      console.warn('Failed to load Mental Health AI summary:', err);
+      setAiSummary('മാനസികാരോഗ്യ മുൻകാല വിവരങ്ങൾ ലഭ്യമല്ല.');
+    } finally {
+      setIsLoadingAiSummary(false);
+    }
+  };
 
   const loadFallbackHouseholds = async () => {
     try {
@@ -110,6 +139,7 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
       if (res.data && res.data.length > 0) {
         setLocalMembers(res.data);
         setCurrentPerson(res.data[0]);
+        loadAiSummaryForPerson(res.data[0].person_id, res.data[0].name);
       } else {
         setLocalMembers([]);
         setCurrentPerson(null);
@@ -134,6 +164,7 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
   const handleSelectPerson = (person: HouseholdMember) => {
     setCurrentPerson(person);
     setIsManuallyChanged(true);
+    loadAiSummaryForPerson(person.person_id, person.name);
     if (onSelectPerson) {
       onSelectPerson(person);
     }
@@ -225,6 +256,7 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
       setSavedSuccess(true);
       setSaveNote(`സേവ് ചെയ്തു: ${targetPersonName} (${res.message || 'MongoDB Synced'})`);
       if (onSaved) onSaved();
+      loadAiSummaryForPerson(targetPersonId, targetPersonName);
       setTimeout(() => {
         setSavedSuccess(false);
         setSaveNote(null);
@@ -585,6 +617,19 @@ export const MentalHealthScreen: React.FC<MentalHealthScreenProps> = ({
               : 'മാനസികാരോഗ്യ രേഖ സേവ് ചെയ്യുക'}
           </Text>
         </TouchableOpacity>
+
+        {/* AI Longitudinal Mental Health Summary Card at End */}
+        <View style={{ marginTop: 14 }}>
+          <AiReportSummaryCard
+            title="മാനസികാരോഗ്യ AI റിപ്പോർട്ട് സംഗ്രഹം"
+            subtitle={`${currentPerson?.name || activePerson?.name || 'ഗുണഭോക്താവ്'} • ${historicalEncountersCount > 0 ? `${historicalEncountersCount} മുൻകാല സന്ദർശനങ്ങൾ` : 'പ്രാഥമിക പരിശോധന'}`}
+            summaryText={aiSummary || 'മാനസികാരോഗ്യ വിവരങ്ങൾ വിശകലനം ചെയ്യുന്നു...'}
+            isLoading={isLoadingAiSummary}
+            recordCount={historicalEncountersCount}
+            onRefresh={() => loadAiSummaryForPerson(currentPerson?.person_id || activePerson?.person_id, currentPerson?.name || activePerson?.name)}
+            badgeColor="#4338CA"
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

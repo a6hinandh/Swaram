@@ -24,9 +24,11 @@ import {
 } from './types';
 import {
   KERALA_LOCATIONS,
+  KOTHAMANGALAM_LOCATION,
   LocationCoordinate,
   fetchLocationWeather,
   fetchCurrentDeviceLocationWeather,
+  checkLocationStatus,
   getOfflinePresetWeather
 } from './services/weatherService';
 import {
@@ -35,7 +37,10 @@ import {
   identifyTargetedQuestions,
   evaluateEnvironmentalCareImpact
 } from './services/environmentalRiskService';
+import { HouseholdMember, HouseholdSummary } from '../../types';
 import { apiClient, getActiveHost } from '../../api/apiClient';
+import { AiReportSummaryCard } from '../../components/AiReportSummaryCard';
+import { generateEnvironmentalSummary } from '../../services/geminiReportSummaryService';
 
 const GPS_DEFAULT_LOCATION: LocationCoordinate = {
   id: 'gps_device',
@@ -46,11 +51,32 @@ const GPS_DEFAULT_LOCATION: LocationCoordinate = {
   longitude: 76.3516
 };
 
-export const EnvironmentalRiskScreen: React.FC = () => {
+interface EnvironmentalRiskScreenProps {
+  activeHousehold?: HouseholdSummary | null;
+  activePerson?: HouseholdMember | null;
+  households?: HouseholdSummary[];
+  householdMembers?: HouseholdMember[];
+  onSelectHousehold?: (household: HouseholdSummary) => void | Promise<void>;
+  onSelectPerson?: (person: HouseholdMember) => void;
+}
+
+export const EnvironmentalRiskScreen: React.FC<EnvironmentalRiskScreenProps> = ({
+  activeHousehold,
+  activePerson,
+  households,
+  householdMembers,
+  onSelectHousehold,
+  onSelectPerson
+}) => {
   // 1. Selected location & weather state (Defaults to Live GPS)
   const [selectedLocation, setSelectedLocation] = useState<LocationCoordinate>(GPS_DEFAULT_LOCATION);
   const [weather, setWeather] = useState<WeatherData>(getOfflinePresetWeather(GPS_DEFAULT_LOCATION));
   const [isLoadingWeather, setIsLoadingWeather] = useState<boolean>(false);
+
+  // AI Longitudinal Summary State
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isLoadingAiSummary, setIsLoadingAiSummary] = useState<boolean>(false);
+  const [historicalAssessmentsCount, setHistoricalAssessmentsCount] = useState<number>(0);
 
   // 2. Household Vulnerability Context (All unselected by default)
   const [vulnerability, setVulnerability] = useState<HouseholdVulnerability>({
@@ -87,6 +113,30 @@ export const EnvironmentalRiskScreen: React.FC = () => {
     }
   }, [selectedLocation.id]);
 
+  // Sync AI Summary with active household
+  useEffect(() => {
+    loadAiSummaryForHousehold(activeHousehold?.id, activeHousehold?.head_of_household);
+  }, [activeHousehold?.id]);
+
+  const loadAiSummaryForHousehold = async (hhId?: string, hhName?: string) => {
+    const targetHhId = hhId || activeHousehold?.id || 'h-lakshmi-001';
+    const targetHhName = hhName || activeHousehold?.head_of_household || 'Lakshmi Devi';
+    setIsLoadingAiSummary(true);
+    try {
+      const res = await apiClient.getEnvironmentalAssessments(targetHhId);
+      const assessments = (res.data && Array.isArray(res.data)) ? res.data : [];
+      setHistoricalAssessmentsCount(assessments.length);
+
+      const result = await generateEnvironmentalSummary(assessments, targetHhName);
+      setAiSummary(result.summary);
+    } catch (err) {
+      console.warn('Failed to load Environmental AI summary:', err);
+      setAiSummary('കാലാവസ്ഥാ മുൻകാല നിരീക്ഷണ വിവരങ്ങൾ ലഭ്യമല്ല.');
+    } finally {
+      setIsLoadingAiSummary(false);
+    }
+  };
+
   const loadWeatherData = async (loc: LocationCoordinate) => {
     setIsLoadingWeather(true);
     try {
@@ -99,21 +149,69 @@ export const EnvironmentalRiskScreen: React.FC = () => {
     }
   };
 
+  const setKothamangalamFallback = async () => {
+    setIsLoadingWeather(true);
+    try {
+      const data = await fetchLocationWeather(KOTHAMANGALAM_LOCATION);
+      setWeather(data);
+      setSelectedLocation(KOTHAMANGALAM_LOCATION);
+    } catch (err) {
+      console.log('Kothamangalam weather load failed:', err);
+    } finally {
+      setIsLoadingWeather(false);
+    }
+  };
+
   const handleUseCurrentGps = async () => {
     setIsLoadingWeather(true);
     try {
-      const data = await fetchCurrentDeviceLocationWeather();
-      setWeather(data);
-      setSelectedLocation({
-        id: 'gps_device',
-        name: data.locationName,
-        nameMl: data.locationName,
-        district: 'Current GPS',
-        latitude: data.latitude,
-        longitude: data.longitude
-      });
-    } catch {
-      console.log('Could not get exact GPS coordinates. Using fallback cached data.');
+      const status = await checkLocationStatus();
+
+      if (!status.servicesEnabled) {
+        setIsLoadingWeather(false);
+        Alert.alert(
+          'ലൊക്കേഷൻ ഓൺ ചെയ്യുക (Location is Off)',
+          'തത്സമയ കാലാവസ്ഥ ലഭിക്കുന്നതിനായി ഫോണിലെ ലൊക്കേഷൻ (GPS) ഓൺ ചെയ്യുക. അനുമതി നൽകിയില്ലെങ്കിൽ കോതമംഗലത്തെ കാലാവസ്ഥ കാണിക്കുന്നതാണ്.',
+          [
+            {
+              text: 'കോതമംഗലം മതി (Use Kothamangalam)',
+              style: 'cancel',
+              onPress: () => setKothamangalamFallback()
+            },
+            {
+              text: 'ഓൺ ചെയ്യുക (Turn On)',
+              onPress: async () => {
+                setIsLoadingWeather(true);
+                const res = await fetchCurrentDeviceLocationWeather(KOTHAMANGALAM_LOCATION);
+                setWeather(res.weather);
+                setSelectedLocation(res.location);
+                setIsLoadingWeather(false);
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      if (!status.permissionGranted) {
+        const res = await fetchCurrentDeviceLocationWeather(KOTHAMANGALAM_LOCATION);
+        setWeather(res.weather);
+        setSelectedLocation(res.location);
+        if (res.errorReason === 'permission_denied') {
+          Alert.alert(
+            'ലൊക്കേഷൻ അനുമതി നൽകിയില്ല (Permission Denied)',
+            'ഡിഫോൾട്ടായി കോതമംഗലത്തെ കാലാവസ്ഥ ലഭ്യമാക്കിയിട്ടുണ്ട് (Kothamangalam, Ernakulam).'
+          );
+        }
+        return;
+      }
+
+      const res = await fetchCurrentDeviceLocationWeather(KOTHAMANGALAM_LOCATION);
+      setWeather(res.weather);
+      setSelectedLocation(res.location);
+    } catch (err) {
+      console.log('Could not get exact GPS coordinates. Using Kothamangalam fallback:', err);
+      await setKothamangalamFallback();
     } finally {
       setIsLoadingWeather(false);
     }
@@ -185,9 +283,12 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 
   const handleSaveAssessment = async () => {
     setIsSaving(true);
+    const targetHhId = activeHousehold?.id || 'h-lakshmi-001';
+    const targetPersonId = activePerson?.person_id;
     const assessmentPayload = {
       assessment_id: `env_${Date.now()}`,
-      household_id: 'HH-KUTTANAD-004',
+      household_id: targetHhId,
+      person_id: targetPersonId,
       timestamp: new Date().toISOString(),
       location: {
         id: selectedLocation.id,
@@ -214,6 +315,7 @@ export const EnvironmentalRiskScreen: React.FC = () => {
     try {
       const res = await apiClient.saveEnvironmentalAssessment(assessmentPayload);
       setSavedSuccess(true);
+      loadAiSummaryForHousehold(targetHhId, activeHousehold?.head_of_household);
 
       const careGapSummary = activeCareGaps.length > 0
         ? `\n\nCare Gaps Updated (${activeCareGaps.length}):\n${activeCareGaps.map(g => `- ${g.description} [${g.priority.toUpperCase()}]`).join('\n')}`
@@ -899,6 +1001,19 @@ export const EnvironmentalRiskScreen: React.FC = () => {
               : 'പരിസ്ഥിതി രേഖ സേവ് ചെയ്യുക (Save Record)'}
           </Text>
         </TouchableOpacity>
+
+        {/* AI Longitudinal Climate & Environmental Risk Summary Card at End */}
+        <View style={{ marginTop: 14 }}>
+          <AiReportSummaryCard
+            title="പരിസ്ഥിതി ആരോഗ്യ AI റിപ്പോർട്ട് സംഗ്രഹം"
+            subtitle={`${activeHousehold?.head_of_household ? `${activeHousehold.head_of_household}-ന്റെ ഭവനം` : 'തിരഞ്ഞെടുത്ത ഭവനം'} • ${historicalAssessmentsCount > 0 ? `${historicalAssessmentsCount} മുൻകാല നിരീക്ഷണങ്ങൾ` : 'പ്രാഥമിക നിരീക്ഷണം'}`}
+            summaryText={aiSummary || 'പരിസ്ഥിതി ആരോഗ്യ വിവരങ്ങൾ വിശകലനം ചെയ്യുന്നു...'}
+            isLoading={isLoadingAiSummary}
+            recordCount={historicalAssessmentsCount}
+            onRefresh={() => loadAiSummaryForHousehold(activeHousehold?.id, activeHousehold?.head_of_household)}
+            badgeColor="#0284C7"
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

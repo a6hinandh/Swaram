@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from models.schemas import HouseholdCareLedgerSchema, CareGapSchema
 from services.narrative_service import NarrativeService
-from db.database import care_ledgers_col, vitals_baselines_col
+from db.database import care_ledgers_col, vitals_baselines_col, encounters_col
 
 router = APIRouter(prefix="/api/v1/ledger", tags=["Care Ledger"])
 
@@ -12,10 +12,33 @@ def get_care_ledger(household_id: str):
     Returns the persistent household Unresolved Care Ledger from MongoDB across all programmes
     including longitudinal vitals baselines, malnutrition monitoring, and clinical history.
     """
+    total_visits = 0
+    if encounters_col is not None:
+        try:
+            total_visits = encounters_col.count_documents({"visit.household_id": household_id})
+        except Exception as e:
+            print(f"[MongoDB Error counting visits in ledger] {e}")
+
     if care_ledgers_col is not None:
         try:
             doc = care_ledgers_col.find_one({"household_id": household_id}, {"_id": 0})
             if doc:
+                doc["total_visits"] = total_visits
+                doc["visiting_no"] = doc.get("visiting_no") or (total_visits + 1)
+                if not doc.get("household_name"):
+                    doc["household_name"] = f"Household {household_id}"
+                if doc.get("priority_score") is None:
+                    doc["priority_score"] = 10.0
+                if not doc.get("priority_reasons"):
+                    doc["priority_reasons"] = ["Community Health Monitoring Active"]
+                if not doc.get("longitudinal_narrative"):
+                    doc["longitudinal_narrative"] = f"Household {household_id} Care Ledger synchronized with frontline visits."
+                if not doc.get("care_gaps"):
+                    doc["care_gaps"] = []
+                if doc.get("open_gaps_count") is None:
+                    doc["open_gaps_count"] = len(doc.get("care_gaps", []))
+                if not doc.get("updated_at"):
+                    doc["updated_at"] = datetime.utcnow().isoformat() + "Z"
                 return doc
         except Exception as e:
             print(f"[MongoDB Error in get_care_ledger] {e}")

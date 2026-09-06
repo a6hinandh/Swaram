@@ -51,6 +51,9 @@ export const HouseholdPersonSelector: React.FC<HouseholdPersonSelectorProps> = (
   // New Household Form State
   const [newHhNumber, setNewHhNumber] = useState<string>('');
   const [newHhHead, setNewHhHead] = useState<string>('');
+  const [newHhHeadAge, setNewHhHeadAge] = useState<string>('');
+  const [newHhHeadGender, setNewHhHeadGender] = useState<string>('female');
+  const [newHhHeadConditions, setNewHhHeadConditions] = useState<string>('');
   const [newHhAddress, setNewHhAddress] = useState<string>('');
   const [isSubmittingHh, setIsSubmittingHh] = useState<boolean>(false);
 
@@ -87,11 +90,21 @@ export const HouseholdPersonSelector: React.FC<HouseholdPersonSelectorProps> = (
           external_id: newHhNumber.trim().toUpperCase(),
           head_of_household: newHhHead.trim(),
           address: newHhAddress.trim() || 'Ward 4, Aluva',
-          members_count: 1
-        });
+          members_count: 1,
+          head_details: {
+            age: newHhHeadAge ? parseFloat(newHhHeadAge) : undefined,
+            gender: newHhHeadGender,
+            relationship: 'head',
+            chronic_conditions: newHhHeadConditions
+              ? newHhHeadConditions.split(',').map((c) => c.trim()).filter(Boolean)
+              : []
+          }
+        } as any);
       }
       setNewHhNumber('');
       setNewHhHead('');
+      setNewHhHeadAge('');
+      setNewHhHeadConditions('');
       setNewHhAddress('');
       setShowAddHhModal(false);
     } finally {
@@ -417,6 +430,38 @@ export const HouseholdPersonSelector: React.FC<HouseholdPersonSelectorProps> = (
                 onChangeText={setNewHhHead}
               />
 
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>പ്രായം</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="ഉദാ. 50"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                    value={newHhHeadAge}
+                    onChangeText={setNewHhHeadAge}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>ലിംഗം</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                    <TouchableOpacity
+                      style={[styles.genderBtn, newHhHeadGender === 'female' && styles.genderBtnActive]}
+                      onPress={() => setNewHhHeadGender('female')}
+                    >
+                      <Text style={[styles.genderBtnText, newHhHeadGender === 'female' && styles.genderBtnTextActive]}>സ്ത്രീ</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.genderBtn, newHhHeadGender === 'male' && styles.genderBtnActive]}
+                      onPress={() => setNewHhHeadGender('male')}
+                    >
+                      <Text style={[styles.genderBtnText, newHhHeadGender === 'male' && styles.genderBtnTextActive]}>പുരുഷൻ</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
               <Text style={styles.inputLabel}>മേൽവിലാസം</Text>
               <TextInput
                 style={styles.modalInput}
@@ -424,6 +469,15 @@ export const HouseholdPersonSelector: React.FC<HouseholdPersonSelectorProps> = (
                 placeholderTextColor="#94A3B8"
                 value={newHhAddress}
                 onChangeText={setNewHhAddress}
+              />
+
+              <Text style={styles.inputLabel}>രോഗാവസ്ഥകൾ (ഉണ്ടെങ്കിൽ)</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="ഉദാ. രക്താതിമർദ്ദം, പ്രമേഹം"
+                placeholderTextColor="#94A3B8"
+                value={newHhHeadConditions}
+                onChangeText={setNewHhHeadConditions}
               />
 
               <TouchableOpacity

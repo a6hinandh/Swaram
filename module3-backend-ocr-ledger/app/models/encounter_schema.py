@@ -6,6 +6,8 @@ class VisitMeta(BaseModel):
     visit_id: str
     household_id: str
     date: str  # YYYY-MM-DD
+    visiting_no: Optional[int] = None
+    visit_number: Optional[int] = None
     visit_type: Optional[Literal["routine", "follow_up", "referral"]] = None
     source: Optional[Literal["voice", "manual", "mixed"]] = None
 

@@ -10,6 +10,7 @@ export interface HouseholdSummary {
   priority_score: number;
   priority_reasons: string[];
   malnutrition_risk?: string;
+  members?: HouseholdMember[];
 }
 
 export interface HouseholdMember {

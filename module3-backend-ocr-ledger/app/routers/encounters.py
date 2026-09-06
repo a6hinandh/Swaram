@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from models.encounter_schema import ClinicalEncounterSchema
 import db.database as db_mod
 
@@ -12,10 +13,40 @@ IN_MEMORY_ENCOUNTERS: Dict[str, Dict[str, Any]] = {}
 def save_clinical_encounter(encounter: ClinicalEncounterSchema):
     """
     Saves or updates a rich clinical encounter in MongoDB.
-    Applies idempotency by visit_id.
+    Calculates visiting_no as count of previous records + 1.
+    Synchronizes longitudinal vitals baselines and care ledgers.
     """
     doc = encounter.dict(by_alias=True)
+    if doc.get("_id") is None:
+        doc.pop("_id", None)
+
     visit_id = encounter.visit.visit_id
+    person_id = encounter.person.person_id
+    household_id = encounter.visit.household_id
+
+    # 1. Determine visiting_no (count of previous records for this person + 1)
+    visiting_no = doc.get("visit", {}).get("visiting_no")
+    if not visiting_no:
+        if db_mod.encounters_col is not None:
+            try:
+                existing = db_mod.encounters_col.find_one({"visit.visit_id": visit_id})
+                if existing and existing.get("visit", {}).get("visiting_no"):
+                    visiting_no = existing["visit"]["visiting_no"]
+                else:
+                    prev_count = db_mod.encounters_col.count_documents({"person.person_id": person_id})
+                    visiting_no = prev_count + 1
+            except Exception as e:
+                print(f"[MongoDB visiting_no count error] {e}")
+                visiting_no = 1
+        else:
+            prev_count = len([e for e in IN_MEMORY_ENCOUNTERS.values() if e.get("person", {}).get("person_id") == person_id])
+            visiting_no = prev_count + 1
+
+    if "visit" not in doc:
+        doc["visit"] = {}
+    doc["visit"]["visiting_no"] = visiting_no
+    doc["visit"]["visit_number"] = visiting_no
+    doc["visiting_no"] = visiting_no
 
     if db_mod.encounters_col is not None:
         try:
@@ -24,16 +55,61 @@ def save_clinical_encounter(encounter: ClinicalEncounterSchema):
                 {"$set": doc},
                 upsert=True
             )
+
+            # Synchronize with vitals_baselines if measurements present
+            obs_m = doc.get("observations", {}).get("measurements", {}) if isinstance(doc.get("observations"), dict) else {}
+            m = obs_m or doc.get("measurements", {})
+            if db_mod.vitals_baselines_col is not None and m:
+                sys_bp = m.get("blood_pressure", {}).get("systolic_mmhg") if isinstance(m.get("blood_pressure"), dict) else m.get("blood_pressure_sys")
+                dia_bp = m.get("blood_pressure", {}).get("diastolic_mmhg") if isinstance(m.get("blood_pressure"), dict) else m.get("blood_pressure_dia")
+                glu = m.get("blood_sugar_mg_dl") or (m.get("blood_glucose", {}).get("value") if isinstance(m.get("blood_glucose"), dict) else None)
+                wt = m.get("weight_kg")
+                pulse = m.get("pulse_bpm")
+                muac = m.get("muac_cm")
+
+                history_pt = {
+                    "date": doc.get("visit", {}).get("date", datetime.utcnow().isoformat()[:10]),
+                    "visiting_no": visiting_no,
+                    "visit_number": visiting_no,
+                    "systolic": sys_bp,
+                    "diastolic": dia_bp,
+                    "glucose": glu,
+                    "pulse": pulse,
+                    "weight": wt,
+                    "muac": muac
+                }
+
+                db_mod.vitals_baselines_col.update_one(
+                    {"person_id": person_id},
+                    {
+                        "$push": {"recent_history_points": history_pt},
+                        "$set": {
+                            "latest_measurement": history_pt,
+                            "visiting_no": visiting_no,
+                            "updated_at": datetime.utcnow().isoformat() + "Z"
+                        },
+                        "$setOnInsert": {
+                            "household_id": household_id,
+                            "person_name": encounter.person.name or "Beneficiary",
+                            "age": encounter.person.age,
+                            "gender": encounter.person.sex or "female",
+                            "created_at": datetime.utcnow().isoformat() + "Z"
+                        }
+                    },
+                    upsert=True
+                )
+
             return {
                 "status": "saved",
                 "storage": "mongodb",
                 "visit_id": visit_id,
-                "household_id": encounter.visit.household_id,
-                "person_id": encounter.person.person_id,
+                "visiting_no": visiting_no,
+                "household_id": household_id,
+                "person_id": person_id,
                 "upserted": result.upserted_id is not None
             }
         except Exception as e:
-            print(f"[MongoDB Error] {e}")
+            print(f"[MongoDB Error in save_clinical_encounter] {e}")
 
     # In-memory fallback
     IN_MEMORY_ENCOUNTERS[visit_id] = doc
@@ -41,8 +117,9 @@ def save_clinical_encounter(encounter: ClinicalEncounterSchema):
         "status": "saved",
         "storage": "in_memory_fallback",
         "visit_id": visit_id,
-        "household_id": encounter.visit.household_id,
-        "person_id": encounter.person.person_id
+        "visiting_no": visiting_no,
+        "household_id": household_id,
+        "person_id": person_id
     }
 
 @router.get("", response_model=List[Dict[str, Any]])

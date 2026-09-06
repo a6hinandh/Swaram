@@ -43,6 +43,7 @@ try:
     vitals_baselines_col = db["vitals_baselines"]
     actions_col = db["actions"]
     persons_col = db["persons"]
+    cbac_surveys_col = db["cbac_surveys"]
 
     # Setup indexes
     encounters_col.create_index([("visit.visit_id", ASCENDING)], unique=True)
@@ -73,6 +74,11 @@ try:
     persons_col.create_index([("person_id", ASCENDING)], unique=True)
     persons_col.create_index([("household_id", ASCENDING)])
 
+    cbac_surveys_col.create_index([("survey_id", ASCENDING)], unique=True)
+    cbac_surveys_col.create_index([("beneficiary_id", ASCENDING)])
+    cbac_surveys_col.create_index([("household_id", ASCENDING)])
+    cbac_surveys_col.create_index([("timestamp", -1)])
+
     print("[MongoDB] Successfully connected to MongoDB database 'swaram_db' with all indexes ready.")
 except (ConnectionFailure, OperationFailure, Exception) as e:
     print(f"[MongoDB] Warning: Could not connect to live MongoDB ({e}). Running with in-memory fallback store.")
@@ -86,3 +92,4 @@ except (ConnectionFailure, OperationFailure, Exception) as e:
     vitals_baselines_col = None
     actions_col = None
     persons_col = None
+    cbac_surveys_col = None
