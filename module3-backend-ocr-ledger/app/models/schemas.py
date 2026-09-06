@@ -57,6 +57,8 @@ class ConfirmedVisitSchema(BaseModel):
     household_id: str
     worker_id: str
     timestamp: str
+    visiting_no: Optional[int] = None
+    visit_number: Optional[int] = None
     person_updates: List[PersonUpdateSchema]
     survey_fields: Optional[List[SwaramSurveyFieldSchema]] = Field(default_factory=list)
     malnutrition_assessment: Optional[MalnutritionAssessmentSchema] = None
@@ -64,6 +66,29 @@ class ConfirmedVisitSchema(BaseModel):
     confirmed_by_worker_at: str
     corrections_made: Optional[List[str]] = Field(default_factory=list)
     sync_status: str = "synced"
+
+class PersonSchema(BaseModel):
+    person_id: Optional[str] = None
+    household_id: Optional[str] = None
+    name: str
+    age: Optional[float] = None
+    gender: Optional[str] = None
+    relationship: Optional[str] = "member"
+    life_stage: Optional[str] = "adult"
+    pregnancy_status: Optional[str] = "not_pregnant"
+    pregnancy_weeks: Optional[int] = None
+    chronic_conditions: List[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+
+class HeadDetailsSchema(BaseModel):
+    person_id: Optional[str] = None
+    age: Optional[float] = None
+    gender: Optional[str] = None
+    relationship: Optional[str] = "head"
+    life_stage: Optional[str] = None
+    pregnancy_status: Optional[str] = "not_pregnant"
+    pregnancy_weeks: Optional[int] = None
+    chronic_conditions: List[str] = Field(default_factory=list)
 
 class HouseholdSummarySchema(BaseModel):
     id: str
@@ -75,6 +100,7 @@ class HouseholdSummarySchema(BaseModel):
     priority_score: float
     priority_reasons: List[str]
     malnutrition_risk: Optional[str] = "Normal"
+    members: Optional[List[PersonSchema]] = Field(default_factory=list)
 
 class CareGapSchema(BaseModel):
     id: str
@@ -101,6 +127,8 @@ class HouseholdCareLedgerSchema(BaseModel):
     priority_reasons: List[str]
     longitudinal_narrative: str
     malnutrition_trend: Optional[str] = "Normal growth trajectory"
+    visiting_no: Optional[int] = None
+    total_visits: Optional[int] = None
 
 class SyncItemSchema(BaseModel):
     client_event_id: str
@@ -118,6 +146,8 @@ class SyncPushResponseSchema(BaseModel):
 
 class HistoricalVitalsPointSchema(BaseModel):
     date: str
+    visiting_no: Optional[int] = None
+    visit_number: Optional[int] = None
     systolic: Optional[float] = None
     diastolic: Optional[float] = None
     glucose: Optional[float] = None
@@ -144,6 +174,7 @@ class VitalsBaselineSchema(BaseModel):
     person_name: str
     age: Optional[int] = None
     gender: Optional[str] = None
+    visiting_no: Optional[int] = None
     baseline_metrics: Dict[str, Any] = Field(default_factory=dict)
     rolling_statistics: Dict[str, Any] = Field(default_factory=dict)
     latest_measurement: Optional[Dict[str, Any]] = None
@@ -155,6 +186,7 @@ class VitalsBaselineSchema(BaseModel):
 class VitalsDeltaRequestSchema(BaseModel):
     person_id: str
     household_id: str
+    visiting_no: Optional[int] = None
     systolic_bp: Optional[float] = None
     diastolic_bp: Optional[float] = None
     glucose_mg_dl: Optional[float] = None
@@ -181,25 +213,14 @@ class LoginResponseSchema(BaseModel):
     token_type: str = "bearer"
     user: AshaWorkerProfileSchema
 
-class PersonSchema(BaseModel):
-    person_id: str
-    household_id: str
-    name: str
-    age: Optional[float] = None
-    gender: Optional[str] = None
-    relationship: Optional[str] = "member"
-    life_stage: Optional[str] = "adult"
-    pregnancy_status: Optional[str] = "not_pregnant"
-    pregnancy_weeks: Optional[int] = None
-    chronic_conditions: List[str] = Field(default_factory=list)
-    created_at: Optional[str] = None
-
 class CreateHouseholdSchema(BaseModel):
     id: Optional[str] = None
-    external_id: str  # e.g. ASHA-WARD4-HH045
+    external_id: Optional[str] = None  # e.g. ASHA-WARD4-HH045
     head_of_household: str
     address: str
-    ward: str = "Ward 4, Aluva"
-    members_count: int = 1
+    ward: Optional[str] = "Ward 4, Aluva"
+    members_count: Optional[int] = None
     malnutrition_risk: Optional[str] = "Normal"
+    head_details: Optional[HeadDetailsSchema] = None
+    members: Optional[List[PersonSchema]] = Field(default_factory=list)
 

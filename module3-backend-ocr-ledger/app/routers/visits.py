@@ -23,6 +23,15 @@ def record_confirmed_visit(visit: ConfirmedVisitSchema):
             if existing:
                 return {"status": "already_exists", "id": visit.visit_id, "storage": "mongodb"}
 
+            # Calculate visiting_no (count of previous visits for this household + 1)
+            visiting_no = visit.visiting_no
+            if not visiting_no:
+                prev_count = visits_col.count_documents({"household_id": visit.household_id})
+                visiting_no = prev_count + 1
+
+            visit_data["visiting_no"] = visiting_no
+            visit_data["visit_number"] = visiting_no
+
             visits_col.insert_one(visit_data)
 
             # Also log each person update into clinical_encounters for longitudinal tracking
@@ -56,10 +65,16 @@ def record_confirmed_visit(visit: ConfirmedVisitSchema):
                     if measurements_doc:
                         observations_doc["measurements"] = measurements_doc
 
+                    # Person-specific visit number
+                    person_prev_enc_count = encounters_col.count_documents({"person.person_id": person_up.person_id})
+                    person_visiting_no = person_prev_enc_count + 1
+
                     encounter_doc = {
                         "visit": {
                             "visit_id": f"{visit.visit_id}-{person_up.person_id}",
                             "household_id": visit.household_id,
+                            "visiting_no": person_visiting_no,
+                            "visit_number": person_visiting_no,
                             "date": visit.timestamp[:10],
                             "visit_type": "routine",
                             "source": "manual"
@@ -81,7 +96,13 @@ def record_confirmed_visit(visit: ConfirmedVisitSchema):
                         upsert=True
                     )
 
-            return {"status": "saved", "id": visit.visit_id, "timestamp": visit.timestamp, "storage": "mongodb"}
+            return {
+                "status": "saved",
+                "id": visit.visit_id,
+                "visiting_no": visiting_no,
+                "timestamp": visit.timestamp,
+                "storage": "mongodb"
+            }
         except Exception as e:
             print(f"[MongoDB Error in record_confirmed_visit] {e}")
 

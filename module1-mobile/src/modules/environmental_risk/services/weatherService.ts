@@ -16,7 +16,17 @@ export interface LocationCoordinate {
   longitude: number;
 }
 
+export const KOTHAMANGALAM_LOCATION: LocationCoordinate = {
+  id: 'kothamangalam',
+  name: 'Kothamangalam',
+  nameMl: 'കോതമംഗലം',
+  district: 'Ernakulam',
+  latitude: 10.0601,
+  longitude: 76.6284
+};
+
 export const KERALA_LOCATIONS: LocationCoordinate[] = [
+  KOTHAMANGALAM_LOCATION,
   {
     id: 'aluva',
     name: 'Aluva (Ward 4)',
@@ -224,13 +234,54 @@ export const getOfflinePresetWeather = (
 };
 
 /**
- * Automatically fetch weather using the device's real GPS coordinates
+ * Check if device location services are enabled and if permission is granted
  */
-export const fetchCurrentDeviceLocationWeather = async (): Promise<WeatherData> => {
+export const checkLocationStatus = async (): Promise<{
+  available: boolean;
+  servicesEnabled: boolean;
+  permissionGranted: boolean;
+}> => {
+  if (!Location) {
+    return { available: false, servicesEnabled: false, permissionGranted: false };
+  }
   try {
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    const perm = await Location.getForegroundPermissionsAsync();
+    return {
+      available: true,
+      servicesEnabled: !!servicesEnabled,
+      permissionGranted: perm?.status === 'granted'
+    };
+  } catch (e) {
+    return { available: false, servicesEnabled: false, permissionGranted: false };
+  }
+};
+
+/**
+ * Automatically fetch weather using the device's real GPS coordinates.
+ * Falls back to Kothamangalam if GPS is disabled or permission denied.
+ */
+export const fetchCurrentDeviceLocationWeather = async (
+  fallbackLocation: LocationCoordinate = KOTHAMANGALAM_LOCATION
+): Promise<{ weather: WeatherData; location: LocationCoordinate; isGps: boolean; errorReason?: 'services_off' | 'permission_denied' | 'fetch_failed' }> => {
+  try {
+    if (!Location) {
+      const weather = await fetchLocationWeather(fallbackLocation);
+      return { weather, location: fallbackLocation, isGps: false, errorReason: 'fetch_failed' };
+    }
+
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      console.log('[WeatherService] Device location services are OFF.');
+      const weather = await fetchLocationWeather(fallbackLocation);
+      return { weather, location: fallbackLocation, isGps: false, errorReason: 'services_off' };
+    }
+
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      throw new Error('Permission to access location was denied');
+      console.log('[WeatherService] Permission to access location was denied.');
+      const weather = await fetchLocationWeather(fallbackLocation);
+      return { weather, location: fallbackLocation, isGps: false, errorReason: 'permission_denied' };
     }
 
     const loc = await Location.getCurrentPositionAsync({
@@ -266,9 +317,11 @@ export const fetchCurrentDeviceLocationWeather = async (): Promise<WeatherData> 
       longitude: lon
     };
 
-    return await fetchLocationWeather(deviceLocation);
+    const weather = await fetchLocationWeather(deviceLocation);
+    return { weather, location: deviceLocation, isGps: true };
   } catch (err: any) {
-    console.log('[WeatherService] Device GPS failed, falling back:', err.message);
-    return await fetchLocationWeather(KERALA_LOCATIONS[0]);
+    console.log('[WeatherService] Device GPS failed, falling back to Kothamangalam:', err?.message || err);
+    const weather = await fetchLocationWeather(fallbackLocation);
+    return { weather, location: fallbackLocation, isGps: false, errorReason: 'fetch_failed' };
   }
 };

@@ -38,8 +38,18 @@ import {
 import { calculatePartAScore } from './services/ncdLifestyleService';
 import { audioRecorder } from '../../services/audioRecorder';
 import { transcribeWithIndicConformer } from '../../services/indicConformerService';
+import { apiClient } from '../../api/apiClient';
+import { AiReportSummaryCard } from '../../components/AiReportSummaryCard';
+import { generateCbacSummary } from '../../services/geminiReportSummaryService';
+import { HouseholdMember, HouseholdSummary } from '../../types';
 
 interface NcdLifestyleScreenProps {
+  activePerson?: HouseholdMember | null;
+  activeHousehold?: HouseholdSummary | null;
+  households?: HouseholdSummary[];
+  householdMembers?: HouseholdMember[];
+  onSelectHousehold?: (household: HouseholdSummary) => void | Promise<void>;
+  onSelectPerson?: (person: HouseholdMember) => void;
   onBack?: () => void;
 }
 
@@ -61,9 +71,22 @@ const WIZARD_STEPS: StepInfo[] = [
   { step: 6, title: 'സി.പി.എച്ച്.സി ഔദ്യോഗിക ഫോം', subtitle: 'അന്തിമ വിലയിരുത്തലും സ്കോറും', shortLabel: 'റിവ്യൂ' },
 ];
 
-export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }) => {
+export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({
+  activePerson,
+  activeHousehold,
+  households,
+  householdMembers,
+  onSelectHousehold,
+  onSelectPerson,
+  onBack
+}) => {
   // Wizard Step State
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+
+  // AI Longitudinal Summary State
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isLoadingAiSummary, setIsLoadingAiSummary] = useState<boolean>(false);
+  const [historicalSurveysCount, setHistoricalSurveysCount] = useState<number>(0);
 
   // Collapsible Header on Scroll State
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState<boolean>(false);
@@ -81,7 +104,28 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
   const timerRef = useRef<any>(null);
 
   // Active Questionnaire Record State
-  const [record, setRecord] = useState<CbacOfficialRecord>(createDefaultCbacRecord());
+  const [record, setRecord] = useState<CbacOfficialRecord>(() => {
+    const rec = createDefaultCbacRecord(activePerson?.person_id || undefined);
+    if (activePerson) {
+      rec.beneficiaryId = activePerson.person_id;
+      rec.personalDetails.name = activePerson.name || '';
+      if (activePerson.age !== undefined) {
+        rec.personalDetails.age = activePerson.age;
+        if (activePerson.age < 30) rec.partA.ageScore = 0;
+        else if (activePerson.age <= 39) rec.partA.ageScore = 1;
+        else if (activePerson.age <= 49) rec.partA.ageScore = 2;
+        else if (activePerson.age <= 59) rec.partA.ageScore = 3;
+        else rec.partA.ageScore = 4;
+      }
+      if (activePerson.gender) {
+        rec.personalDetails.sex = activePerson.gender === 'female' ? 'female' : 'male';
+      }
+    }
+    if (activeHousehold) {
+      rec.generalInfo.villageWard = activeHousehold.address || 'വാർഡ് 4 (ആലുവ)';
+    }
+    return rec;
+  });
 
   // Storage & Longitudinal Profile State
   const [profiles, setProfiles] = useState<BeneficiaryProfile[]>([]);
@@ -102,6 +146,64 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
   useEffect(() => {
     loadAllProfiles();
   }, []);
+
+  // Sync with active person prop change
+  useEffect(() => {
+    if (activePerson) {
+      setRecord((prev) => {
+        const updated = { ...prev };
+        updated.beneficiaryId = activePerson.person_id;
+        if (activePerson.name) updated.personalDetails.name = activePerson.name;
+        if (activePerson.age !== undefined) {
+          updated.personalDetails.age = activePerson.age;
+          if (activePerson.age < 30) updated.partA.ageScore = 0;
+          else if (activePerson.age <= 39) updated.partA.ageScore = 1;
+          else if (activePerson.age <= 49) updated.partA.ageScore = 2;
+          else if (activePerson.age <= 59) updated.partA.ageScore = 3;
+          else updated.partA.ageScore = 4;
+        }
+        if (activePerson.gender) {
+          updated.personalDetails.sex = activePerson.gender === 'female' ? 'female' : 'male';
+        }
+        calculatePartAScore(updated);
+        return updated;
+      });
+      loadAiSummaryForPerson(activePerson.person_id, activePerson.name);
+    }
+  }, [activePerson?.person_id]);
+
+  const loadAiSummaryForPerson = async (personId?: string, personName?: string) => {
+    const targetId = personId || record.beneficiaryId || 'p-radhamani-01';
+    const targetName = personName || record.personalDetails.name || 'Radhamani P.';
+    setIsLoadingAiSummary(true);
+    try {
+      // 1. Fetch from MongoDB Atlas API
+      const res = await apiClient.getBeneficiaryCbacSurveys(targetId);
+      const surveys = (res.data && Array.isArray(res.data)) ? res.data : [];
+      
+      // Also merge any local profile records if found
+      const localList = await getAllBeneficiaryProfiles();
+      const localMatched = localList.find((p) => p.beneficiaryId === targetId || p.name.toLowerCase() === targetName.toLowerCase());
+      if (localMatched && localMatched.surveys && localMatched.surveys.length > 0) {
+        localMatched.surveys.forEach((s) => {
+          if (!surveys.some((existing: any) => existing.timestamp === s.timestamp || existing.surveyId === s.surveyId)) {
+            surveys.push(s);
+          }
+        });
+      }
+
+      setHistoricalSurveysCount(surveys.length);
+
+      // 2. Generate Gemini longitudinal summary
+      const result = await generateCbacSummary(surveys, targetName);
+      setAiSummary(result.summary);
+    } catch (err) {
+      console.warn('Failed to load CBAC AI summary:', err);
+      setAiSummary('CBAC മുൻകാല പരിശോധനാ വിവരങ്ങൾ ലഭ്യമല്ല. പുതിയ പരിശോധന നടത്തുക.');
+    } finally {
+      setIsLoadingAiSummary(false);
+    }
+  };
 
   // Sync filtered profiles
   useEffect(() => {
@@ -214,20 +316,31 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
     setVoiceStatusMsg('തിരുത്തിയ ശബ്ദരേഖയിൽ നിന്ന് ഫോം അപ്ഡേറ്റ് ചെയ്തു');
   };
 
-  // Save Survey to Beneficiary Profile
+  // Save Survey to Beneficiary Profile and MongoDB Atlas
   const handleSaveSurvey = async () => {
     setIsSaving(true);
-    setSaveSuccessMsg('വ്യക്തിഗത പ്രൊഫൈലിലേക്ക് സേവ് ചെയ്യുന്നു...');
+    setSaveSuccessMsg('ഡാറ്റാബേസിലേക്ക് സേവ് ചെയ്യുന്നു (Saving to MongoDB Atlas)...');
     try {
+      // 1. Save locally for offline storage
       const updatedProfile = await saveSurveyToProfile(record);
       setSelectedProfile(updatedProfile);
       await loadAllProfiles();
-      setSaveSuccessMsg(`വിജയകരമായി സേവ് ചെയ്തു (${record.personalDetails.name} - സ്കോർ: ${record.partA.totalScore}/10)`);
+
+      // 2. Persist to MongoDB Atlas cbac_surveys & synchronize care ledgers
+      const dbRes = await apiClient.saveCbacSurvey(record);
+      if (dbRes.data && dbRes.data.storage === 'mongodb') {
+        setSaveSuccessMsg(`✓ കേന്ദ്ര ഡാറ്റാബേസിൽ രേഖപ്പെടുത്തി! (${record.personalDetails.name} - സന്ദർശനം #${dbRes.data.visiting_no}, സ്കോർ: ${record.partA.totalScore}/10)`);
+      } else {
+        setSaveSuccessMsg(`✓ വിജയകരമായി സേവ് ചെയ്തു (${record.personalDetails.name} - സ്കോർ: ${record.partA.totalScore}/10)`);
+      }
+
+      // 3. Refresh AI Longitudinal Summary
+      loadAiSummaryForPerson(record.beneficiaryId, record.personalDetails.name);
     } catch (err: any) {
       setSaveSuccessMsg(`Error: ${err.message}`);
     } finally {
       setIsSaving(false);
-      setTimeout(() => setSaveSuccessMsg(null), 4000);
+      setTimeout(() => setSaveSuccessMsg(null), 4500);
     }
   };
 
@@ -244,6 +357,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
     refreshScores(newRecord);
     setCurrentStep(1);
     setVoiceStatusMsg(`പുതിയ സർവേ ആരംഭിച്ചു (${profile.name})`);
+    loadAiSummaryForPerson(profile.beneficiaryId, profile.name);
   };
 
   const handleResetNewSurvey = () => {
@@ -252,6 +366,7 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
     setTranscript('');
     setCurrentStep(1);
     setVoiceStatusMsg('പുതിയ CBAC സർവേ ആരംഭിച്ചു');
+    loadAiSummaryForPerson(newRecord.beneficiaryId, newRecord.personalDetails.name);
   };
 
   const handleDeleteProfile = async (id: string) => {
@@ -1500,6 +1615,19 @@ export const NcdLifestyleScreen: React.FC<NcdLifestyleScreenProps> = ({ onBack }
                 </View>
               </View>
             )}
+
+            {/* AI Longitudinal Summary Card at End of CBAC Checklist */}
+            <View style={{ marginTop: 14 }}>
+              <AiReportSummaryCard
+                title="CBAC NCD AI റിപ്പോർട്ട് സംഗ്രഹം"
+                subtitle={`${record.personalDetails.name || 'ഗുണഭോക്താവ്'} • ${historicalSurveysCount > 0 ? `${historicalSurveysCount} മുൻകാല സർവേകൾ` : 'പ്രാഥമിക സർവേ'}`}
+                summaryText={aiSummary || 'CBAC വിവരങ്ങൾ വിശകലനം ചെയ്യുന്നു...'}
+                isLoading={isLoadingAiSummary}
+                recordCount={historicalSurveysCount}
+                onRefresh={() => loadAiSummaryForPerson(record.beneficiaryId, record.personalDetails.name)}
+                badgeColor="#059669"
+              />
+            </View>
           </ScrollView>
 
           {/* Sticky Bottom Wizard Navigation Bar */}

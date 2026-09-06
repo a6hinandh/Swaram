@@ -1158,9 +1158,40 @@ function MainApp() {
           onSaved={refreshSavedRecords}
         />
       )}
-      {activeTab === 'climate' && <EnvironmentalRiskScreen />}
-      {activeTab === 'lifestyle' && <NcdLifestyleScreen onBack={() => setActiveTab('core')} />}
-      {activeTab === 'vitals' && <VitalsBaselineScreen />}
+      {activeTab === 'climate' && (
+        <EnvironmentalRiskScreen
+          activeHousehold={selectedHousehold}
+          activePerson={selectedPerson}
+          households={households}
+          householdMembers={householdMembers}
+          onSelectHousehold={handleSelectHousehold}
+          onSelectPerson={handleSelectPerson}
+        />
+      )}
+      {activeTab === 'lifestyle' && (
+        <NcdLifestyleScreen
+          activeHousehold={selectedHousehold}
+          activePerson={selectedPerson}
+          households={households}
+          householdMembers={householdMembers}
+          onSelectHousehold={handleSelectHousehold}
+          onSelectPerson={handleSelectPerson}
+          onBack={() => setActiveTab('core')}
+        />
+      )}
+      {activeTab === 'vitals' && (
+        <VitalsBaselineScreen
+          activeHousehold={selectedHousehold}
+          activePerson={selectedPerson}
+          households={households}
+          householdMembers={householdMembers}
+          onSelectHousehold={handleSelectHousehold}
+          onSelectPerson={handleSelectPerson}
+          isLoadingMembers={isLoadingMembers}
+          onAddNewMember={handleAddNewMember}
+          onAddNewHousehold={handleAddNewHousehold}
+        />
+      )}
       {activeTab === 'profile' && (
         <AshaProfileScreen
           currentUser={currentUser}

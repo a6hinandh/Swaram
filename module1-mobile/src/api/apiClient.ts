@@ -403,9 +403,9 @@ export const apiClient = {
   },
 
   /**
-   * Create a new numbered household
+   * Create a new numbered household (with automatic creation of head and member documents in persons collection)
    */
-  async createHousehold(household: Partial<HouseholdSummary>): Promise<ApiCallStatus<HouseholdSummary>> {
+  async createHousehold(household: Partial<HouseholdSummary> & { head_details?: any; members?: Partial<HouseholdMember>[] }): Promise<ApiCallStatus<HouseholdSummary>> {
     try {
       const response = await fetch(`${getBackendBaseUrl()}/households`, {
         method: 'POST',
@@ -418,26 +418,51 @@ export const apiClient = {
         return {
           data: json,
           isMockFallback: false,
-          message: 'Household created in MongoDB.',
+          message: 'Household and person records created in MongoDB.',
           statusCode: response.status
         };
       }
       throw new Error(`HTTP ${response.status}`);
     } catch {
+      const hhId = household.id || `h-local-${Date.now()}`;
       const localHh: HouseholdSummary = {
-        id: household.id || `h-local-${Date.now()}`,
+        id: hhId,
         external_id: household.external_id || 'ASHA-WARD4-NEW',
         head_of_household: household.head_of_household || 'Head',
         address: household.address || 'Aluva',
-        members_count: household.members_count || 1,
+        members_count: household.members_count || (1 + (household.members?.length || 0)),
         open_care_gaps: 0,
         priority_score: 10.0,
         priority_reasons: ['Newly registered locally']
       };
+
+      // Populate local offline fallback members store
+      const headPerson: HouseholdMember = {
+        person_id: household.head_details?.person_id || `p-${Date.now()}`,
+        household_id: hhId,
+        name: household.head_of_household || 'Head',
+        age: household.head_details?.age,
+        gender: household.head_details?.gender || 'female',
+        relationship: 'head',
+        chronic_conditions: household.head_details?.chronic_conditions || []
+      };
+
+      const extraMembers: HouseholdMember[] = (household.members || []).map((m, idx) => ({
+        person_id: m.person_id || `p-${Date.now()}-${idx}`,
+        household_id: hhId,
+        name: m.name || `Member ${idx + 1}`,
+        age: m.age,
+        gender: m.gender || 'female',
+        relationship: m.relationship || 'member',
+        chronic_conditions: m.chronic_conditions || []
+      }));
+
+      FALLBACK_MEMBERS[hhId] = [headPerson, ...extraMembers];
+
       return {
         data: localHh,
         isMockFallback: true,
-        message: 'Household created in local offline store.'
+        message: 'Household and head person record created in local offline store.'
       };
     }
   },
@@ -833,6 +858,128 @@ export const apiClient = {
         data: null,
         isMockFallback: true,
         message: `Offline mode: calculated locally (${err?.message || 'offline'}).`
+      };
+    }
+  },
+
+  /**
+   * Save Official CBAC Survey to MongoDB Atlas cbac_surveys collection
+   */
+  async saveCbacSurvey(survey: any): Promise<ApiCallStatus<any>> {
+    const url = `${getBackendBaseUrl()}/cbac`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(survey),
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: '✓ CBAC Survey saved to MongoDB Atlas & synchronized with Care Ledger.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: null,
+        isMockFallback: true,
+        message: `Saved to local device queue (${err?.message || 'offline'}).`
+      };
+    }
+  },
+
+  /**
+   * Get all longitudinal CBAC surveys for a beneficiary from MongoDB Atlas
+   */
+  async getBeneficiaryCbacSurveys(beneficiaryId: string): Promise<ApiCallStatus<any[]>> {
+    const url = `${getBackendBaseUrl()}/cbac/beneficiary/${encodeURIComponent(beneficiaryId)}`;
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Retrieved CBAC history from MongoDB Atlas.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: [],
+        isMockFallback: true,
+        message: `Offline mode: loading local records (${err?.message || 'offline'}).`
+      };
+    }
+  },
+
+  /**
+   * Get all environmental risk assessments for a household
+   */
+  async getEnvironmentalAssessments(householdId?: string): Promise<ApiCallStatus<any[]>> {
+    const queryStr = householdId ? `?household_id=${encodeURIComponent(householdId)}` : '';
+    const url = `${getBackendBaseUrl()}/environmental-assessments${queryStr}`;
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Retrieved environmental history from MongoDB Atlas.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: [],
+        isMockFallback: true,
+        message: `Offline mode: ${err?.message || 'offline'}`
+      };
+    }
+  },
+
+  /**
+   * Get person longitudinal clinical encounters
+   */
+  async getPersonEncounters(personId: string): Promise<ApiCallStatus<any[]>> {
+    const url = `${getBackendBaseUrl()}/encounters/person/${encodeURIComponent(personId)}`;
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response.ok) {
+        const json = await response.json();
+        return {
+          data: json,
+          isMockFallback: false,
+          message: 'Retrieved encounters from MongoDB Atlas.',
+          statusCode: response.status
+        };
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err: any) {
+      return {
+        data: [],
+        isMockFallback: true,
+        message: `Offline mode: ${err?.message || 'offline'}`
       };
     }
   }

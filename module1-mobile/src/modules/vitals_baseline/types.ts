@@ -28,6 +28,22 @@ export interface VitalsBaseline {
   recordedVisitsCount: number;
   lastBaselineUpdateDate: string;
   recentHistoryPoints?: HistoricalVitalsPoint[];
+  latestMeasurement?: {
+    systolic?: number | null;
+    diastolic?: number | null;
+    systolic_bp?: number | null;
+    diastolic_bp?: number | null;
+    glucose?: number | null;
+    glucose_mg_dl?: number | null;
+    pulse?: number | null;
+    pulse_bpm?: number | null;
+    weight?: number | null;
+    weight_kg?: number | null;
+    muac?: number | null;
+    muac_cm?: number | null;
+    date?: string;
+    measured_at?: string;
+  } | null;
 }
 
 export interface CurrentVitalsMeasurement {
