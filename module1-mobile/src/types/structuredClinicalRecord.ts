@@ -27,6 +27,7 @@ export type LanguageDetected = 'ml' | 'en' | 'mixed';
 export interface VisitInfo {
   visit_id: string;
   household_id: string;
+  worker_id?: string;
   date: string; // YYYY-MM-DD
   visit_type: VisitType;
 }

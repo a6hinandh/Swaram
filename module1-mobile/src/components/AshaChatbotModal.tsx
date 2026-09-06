@@ -7,12 +7,13 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { AppIcon } from '../modules/shared/navigation/AppIcon';
 import {
   ChatMessage,
   sendChatMessageToGemini,
@@ -31,18 +32,18 @@ const INITIAL_WELCOME_MESSAGE: ChatMessage = {
   role: 'assistant',
   content: `നമസ്കാരം! ഞാൻ നിങ്ങളുടെ സ്വരം എഐ സഹായിയാണ് (Swaram ASHA Copilot).
 
-ഫീൽഡ് വിസിറ്റുകൾക്കിടയിൽ മാതൃ-ശിശു സംരക്ഷണം, പോഷകാഹാരം, ഇമ്മ്യൂണൈസേഷൻ, ബിപി/പ്രമേഹ പരിശോധനകൾ എന്നിവ സംബന്ധിച്ച ഏത് ചോദ്യങ്ങളും മലയാളത്തിലോ ഇംഗ്ലീഷിലോ എന്നോട് ചോദിക്കാം.
+ഫീൽഡ് വിസിറ്റുകൾക്കിടയിൽ മാതൃ-ശിശു സംരക്ഷണം, പോഷകാഹാരം, ഇമ്മ്യൂണൈസേഷൻ, ബിപി/പ്രമേഹ പരിശോധനകൾ എന്നിവ സംബന്ധിച്ച ഏത് ചോദ്യങ്ങളും എന്നോട് ചോദിക്കാം.
 
 താഴെ നൽകിയിട്ടുള്ള വിഷയങ്ങളിൽ ക്ലിക്ക് ചെയ്യുകയോ ടൈപ്പ് ചെയ്യുകയോ ചെയ്യാം:`,
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };
 
 const SUGGESTION_CHIPS = [
-  { id: 'chip_nutrition', label: '🥗 കുഞ്ഞിന്റെ പോഷകാഹാരം', prompt: 'ശിശു പോഷകാഹാരവും മ്യൂവാക് (MUAC) അളവുകളും എന്തൊക്കെയാണ്?' },
-  { id: 'chip_anc', label: '🤰 ഗർഭകാല മുന്നറിയിപ്പുകൾ', prompt: 'ഗർഭകാലത്തെ അപകട ലക്ഷണങ്ങളും (ANC Danger Signs) റഫറൽ മാനദണ്ഡങ്ങളും എന്തൊക്കെ?' },
-  { id: 'chip_bp', label: '❤️ ബിപി / ഹൈപ്പർടെൻഷൻ', prompt: 'ഹൈപ്പർടെൻഷൻ നിയന്ത്രണത്തിനുള്ള ആശാ വർക്കറുടെ മാർഗ്ഗനിർദ്ദേശങ്ങൾ എന്തൊക്കെ?' },
-  { id: 'chip_ifa', label: '💊 IFA ഗുളികകൾ', prompt: 'IFA ഗുളികകൾ കഴിക്കേണ്ട വിധവും പാർശ്വഫലങ്ങളും എന്തൊക്കെ?' },
-  { id: 'chip_cbac', label: '📋 CBAC ഹൈ-റിസ്ക്', prompt: 'CBAC സർവേയിൽ സ്കോർ 4-ൽ കൂടുതൽ വന്നാൽ എന്തുചെയ്യണം?' }
+  { id: 'chip_nutrition', label: 'കുഞ്ഞിന്റെ പോഷകാഹാരം', prompt: 'ശിശു പോഷകാഹാരവും മ്യൂവാക് (MUAC) അളവുകളും എന്തൊക്കെയാണ്?' },
+  { id: 'chip_anc', label: 'ഗർഭകാല മുന്നറിയിപ്പുകൾ', prompt: 'ഗർഭകാലത്തെ അപകട ലക്ഷണങ്ങളും (ANC Danger Signs) റഫറൽ മാനദണ്ഡങ്ങളും എന്തൊക്കെ?' },
+  { id: 'chip_bp', label: 'ബിപി / ഹൈപ്പർടെൻഷൻ', prompt: 'ഹൈപ്പർടെൻഷൻ നിയന്ത്രണത്തിനുള്ള ആശാ വർക്കറുടെ മാർഗ്ഗനിർദ്ദേശങ്ങൾ എന്തൊക്കെ?' },
+  { id: 'chip_ifa', label: 'IFA ഗുളികകൾ', prompt: 'IFA ഗുളികകൾ കഴിക്കേണ്ട വിധവും പാർശ്വഫലങ്ങളും എന്തൊക്കെ?' },
+  { id: 'chip_cbac', label: 'CBAC ഹൈ-റിസ്ക്', prompt: 'CBAC സർവേയിൽ സ്കോർ 4-ൽ കൂടുതൽ വന്നാൽ എന്തുചെയ്യണം?' }
 ];
 
 export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
@@ -110,7 +111,7 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
       const errorMessage: ChatMessage = {
         id: `msg_err_${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ ${err.message || 'മറുപടി ലഭിക്കുന്നതിൽ തടസ്സമുണ്ടായി. വീണ്ടും ശ്രമിക്കുക.'}`,
+        content: err.message || 'മറുപടി ലഭിക്കുന്നതിൽ തടസ്സമുണ്ടായി. വീണ്ടും ശ്രമിക്കുക.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isError: true
       };
@@ -169,9 +170,9 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
               <TouchableOpacity
                 style={[styles.headerIconBtn, showSettings && styles.headerIconBtnActive]}
                 onPress={() => setShowSettings(!showSettings)}
-                accessibilityLabel="OpenAI Key Settings"
+                accessibilityLabel="Key Settings"
               >
-                <Text style={styles.headerIconText}>🔑</Text>
+                <AppIcon name="key" size={16} color="#FFFFFF" />
               </TouchableOpacity>
 
               {/* Clear Chat Button */}
@@ -180,7 +181,7 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
                 onPress={handleClearChat}
                 accessibilityLabel="Clear Chat"
               >
-                <Text style={styles.headerIconText}>🗑️</Text>
+                <AppIcon name="trash" size={16} color="#FFFFFF" />
               </TouchableOpacity>
 
               {/* Close Button */}
@@ -189,7 +190,7 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
                 onPress={onClose}
                 accessibilityLabel="Close Chatbot"
               >
-                <Text style={styles.closeBtnText}>✕</Text>
+                <AppIcon name="close" size={14} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
@@ -221,15 +222,15 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
               <View style={styles.keyMetaRow}>
                 <TouchableOpacity onPress={() => setShowKeyPlaintext(!showKeyPlaintext)}>
                   <Text style={styles.plainToggleText}>
-                    {showKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
+                    {showKeyPlaintext ? 'Hide Key' : 'Show Key'}
                   </Text>
                 </TouchableOpacity>
                 {activeKey ? (
                   <Text style={styles.keyStatusOk}>
-                    ✓ Key active ({activeKey.slice(0, 7)}...{activeKey.slice(-4)})
+                    Key active ({activeKey.slice(0, 7)}...{activeKey.slice(-4)})
                   </Text>
                 ) : (
-                  <Text style={styles.keyStatusMissing}>⚠️ No key set (Offline mode)</Text>
+                  <Text style={styles.keyStatusMissing}>No key set (Offline mode)</Text>
                 )}
               </View>
 
@@ -278,7 +279,7 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
                 >
                   {!isUser && (
                     <View style={styles.aiMessageAvatar}>
-                      <Text style={{ fontSize: 13 }}>🤖</Text>
+                      <AppIcon name="bot" size={14} color="#34D399" />
                     </View>
                   )}
                   <View
@@ -313,7 +314,7 @@ export const AshaChatbotModal: React.FC<AshaChatbotModalProps> = ({
             {isSending && (
               <View style={[styles.messageRow, styles.messageRowAi]}>
                 <View style={styles.aiMessageAvatar}>
-                  <Text style={{ fontSize: 13 }}>🤖</Text>
+                  <AppIcon name="bot" size={14} color="#34D399" />
                 </View>
                 <View style={[styles.messageBubble, styles.aiBubble, { paddingVertical: 12, paddingHorizontal: 16 }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>

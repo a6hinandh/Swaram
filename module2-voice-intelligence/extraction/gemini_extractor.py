@@ -187,7 +187,7 @@ class GeminiClinicalExtractor:
         Falls back gracefully to local deterministic heuristics if Gemini is offline or unkeyed.
         """
         print(f"\n==================== [Module 2] Clinical Extraction Started ====================")
-        print(f"📥 [Module 2] Received Input Transcript: {transcript}")
+        print(f"[IN] [Module 2] Received Input Transcript: {transcript}")
 
         visit_id = f"v-{uuid.uuid4()}"
         household_id = household_id or f"h-{str(uuid.uuid4())[:8]}"
@@ -203,7 +203,7 @@ class GeminiClinicalExtractor:
 
         # Fallback to local rule extractor if Gemini was not used or failed
         if not extracted_data:
-            print("⚠️ [Module 2] Gemini unavailable or failed. Using Local Fallback Extractor.")
+            print("[WARN] [Module 2] Gemini unavailable or failed. Using Local Fallback Extractor.")
             extracted_data = self._build_local_fallback(transcript, person_id)
             confidence_level = "medium"
 
@@ -271,7 +271,7 @@ class GeminiClinicalExtractor:
         if extraction_meta:
             canonical_encounter["extraction"] = extraction_meta
 
-        print(f"📤 [Module 2] Final Assembled Canonical Encounter:\n{json.dumps(canonical_encounter, indent=2, ensure_ascii=False)}")
+        print(f"[OUT] [Module 2] Final Assembled Canonical Encounter:\n{json.dumps(canonical_encounter, indent=2, ensure_ascii=False)}")
         print(f"=================================================================================\n")
 
         return canonical_encounter
@@ -294,30 +294,30 @@ class GeminiClinicalExtractor:
             }
         }
 
-        print(f"🤖 [Gemini API] Sending request to Gemini models: {self.models}")
+        print(f"[AI] [Gemini API] Sending request to Gemini models: {self.models}")
 
         for model in self.models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
             try:
-                print(f"🔄 [Gemini API] Calling model: {model}...")
+                print(f"[REQ] [Gemini API] Calling model: {model}...")
                 resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
-                print(f"📡 [Gemini API] Model {model} Response Status: HTTP {resp.status_code}")
+                print(f"[NET] [Gemini API] Model {model} Response Status: HTTP {resp.status_code}")
                 if resp.status_code == 200:
                     data = resp.json()
                     raw_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    print(f"📥 [Gemini API] Raw Response Text from {model}:\n{raw_text}")
+                    print(f"[RES] [Gemini API] Raw Response Text from {model}:\n{raw_text}")
                     if raw_text:
                         clean_json = raw_text.strip()
                         if clean_json.startswith("```"):
                             clean_json = re.sub(r"^```(?:json)?\s*", "", clean_json, flags=re.I)
                             clean_json = re.sub(r"\s*```$", "", clean_json)
                         parsed = json.loads(clean_json)
-                        print(f"✅ [Gemini API] Successfully parsed JSON structure from {model}: Person Name = '{parsed.get('person', {}).get('name')}'")
+                        print(f"[OK] [Gemini API] Successfully parsed JSON structure from {model}: Person Name = '{parsed.get('person', {}).get('name')}'")
                         return parsed, "high"
                 else:
-                    print(f"❌ [Gemini API] {model} returned HTTP {resp.status_code}: {resp.text[:200]}")
+                    print(f"[ERR] [Gemini API] {model} returned HTTP {resp.status_code}: {resp.text[:200]}")
             except Exception as e:
-                print(f"❌ [Gemini API] {model} call failed with exception: {e}")
+                print(f"[ERR] [Gemini API] {model} call failed with exception: {e}")
 
         return None, "low"
 

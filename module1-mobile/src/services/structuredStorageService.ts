@@ -167,9 +167,82 @@ export async function deleteStructuredRecord(visitId: string): Promise<boolean> 
 }
 
 /**
- * Export all stored records as a single formatted JSON string
+ * Format a single clinical record into a human-readable structured clinical report
+ */
+export function formatStructuredRecordToReport(record: StructuredClinicalRecord): string {
+  const complaints = record.health_status.complaints.length > 0
+    ? record.health_status.complaints.map(c => `  • ${c.symptom} (${c.duration}, ${c.severity})`).join('\n')
+    : '  • പ്രത്യേക രോഗലക്ഷണങ്ങൾ ഇല്ല (No acute complaints)';
+
+  const meds = record.health_status.medications.length > 0
+    ? record.health_status.medications.map(m => `  • ${m.name} (Adherence: ${m.adherence}, Taking: ${m.taking})`).join('\n')
+    : '  • മരുന്നുകൾ ഇല്ല (No current medications)';
+
+  const gaps = record.care_gaps.length > 0
+    ? record.care_gaps.map(g => `  • [${g.severity.toUpperCase()}] ${g.gap_type}: ${g.description}`).join('\n')
+    : '  • പ്രത്യേക ശ്രദ്ധ ആവശ്യമുള്ള പ്രശ്നങ്ങൾ ഇല്ല';
+
+  return `=======================================================
+സ്വരം ക്ലിനിക്കൽ റിപ്പോർട്ട് (SWARAM CLINICAL REPORT)
+വിസിറ്റ് തീയതി: ${record.visit.date} | ID: ${record.visit.visit_id}
+=======================================================
+
+1. വ്യക്തിഗത വിവരങ്ങൾ (PERSON & BENEFICIARY DETAILS)
+  • പേര് (Name): ${record.person.name || 'രേഖപ്പെടുത്തിയിട്ടില്ല'}
+  • പ്രായം (Age): ${record.person.age !== null ? `${record.person.age} വയസ്സ്` : 'N/A'}
+  • ലിംഗം (Sex): ${record.person.sex.toUpperCase()}
+  • ഘട്ടം (Life Stage): ${record.person.life_stage.toUpperCase()}
+  • ഗർഭാവസ്ഥ (Pregnancy Status): ${record.person.pregnancy_status.toUpperCase()}
+
+2. പരിശോധനാ ഫലങ്ങൾ (MEASUREMENTS & VITALS)
+  • രക്തസമ്മർദ്ദം (Blood Pressure): ${record.measurements.blood_pressure || '--'} mmHg
+  • ശരീരഭാരം (Weight): ${record.measurements.weight_kg !== null ? `${record.measurements.weight_kg} kg` : '--'}
+  • ഉയരം (Height): ${record.measurements.height_cm !== null ? `${record.measurements.height_cm} cm` : '--'}
+  • പൾസ് (Pulse): ${record.measurements.pulse_bpm !== null ? `${record.measurements.pulse_bpm} bpm` : '--'}
+  • രക്തത്തിലെ പഞ്ചസാര (Sugar): ${record.measurements.blood_sugar_mg_dl !== null ? `${record.measurements.blood_sugar_mg_dl} mg/dL` : '--'}
+  • പനി (Temperature): ${record.measurements.temperature_f !== null ? `${record.measurements.temperature_f} °F` : '--'}
+  ${record.measurements.spo2_percent !== null ? `• ഓക്സിജൻ (SpO2): ${record.measurements.spo2_percent} %\n` : ''}
+3. ലക്ഷണങ്ങൾ (HEALTH COMPLAINTS & SYMPTOMS)
+${complaints}
+
+4. നൽകിയ മരുന്നുകൾ (MEDICATIONS GIVEN)
+${meds}
+
+5. ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ (CARE GAPS)
+${gaps}
+
+6. തുടർപരിശോധന & നിർദ്ദേശങ്ങൾ (FOLLOW-UP & REFERRAL)
+  • ആവശ്യകത: ${record.follow_up.required.toUpperCase()}
+  • തീയതി (Due Date): ${record.follow_up.due_date || 'N/A'}
+  • ചുമതലപ്പെടുത്തിയത്: ${record.follow_up.assigned_to.toUpperCase()}
+  • കാരണം: ${record.follow_up.reason || 'Routine follow-up'}
+=======================================================`;
+}
+
+/**
+ * Export all stored records as human-readable structured reports (No raw JSON)
+ */
+export async function exportAllRecordsFormattedText(): Promise<string> {
+  const records = await getAllStructuredRecords();
+  if (records.length === 0) {
+    return 'ഇതുവരെ രേഖകൾ ഒന്നും ലഭ്യമല്ല (No clinical records saved).';
+  }
+
+  const header = `=======================================================\n` +
+    `സ്വരം ആശാ ഫീൽഡ് സർവേ - ക്ലിനിക്കൽ രേഖകളുടെ റിപ്പോർട്ട്\n` +
+    `ആകെ രേഖകൾ (Total Records): ${records.length}\n` +
+    `തയ്യാറാക്കിയ തീയതി: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n` +
+    `=======================================================\n\n`;
+
+  const body = records.map(r => formatStructuredRecordToReport(r)).join('\n\n\n');
+  return header + body;
+}
+
+/**
+ * Legacy JSON export for backwards compatibility
  */
 export async function exportAllRecordsJson(): Promise<string> {
   const records = await getAllStructuredRecords();
   return JSON.stringify(records, null, 2);
 }
+

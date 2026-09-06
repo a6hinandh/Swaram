@@ -161,3 +161,45 @@ class VitalsDeltaRequestSchema(BaseModel):
     pulse_bpm: Optional[float] = None
     weight_kg: Optional[float] = None
     muac_cm: Optional[float] = None
+
+class LoginRequestSchema(BaseModel):
+    username: str
+    password: str
+
+class AshaWorkerProfileSchema(BaseModel):
+    worker_id: str
+    username: str
+    name: str
+    role: str = "asha_worker"
+    ward: str
+    phone: Optional[str] = None
+    sub_centre: Optional[str] = None
+
+class LoginResponseSchema(BaseModel):
+    status: str
+    access_token: str
+    token_type: str = "bearer"
+    user: AshaWorkerProfileSchema
+
+class PersonSchema(BaseModel):
+    person_id: str
+    household_id: str
+    name: str
+    age: Optional[float] = None
+    gender: Optional[str] = None
+    relationship: Optional[str] = "member"
+    life_stage: Optional[str] = "adult"
+    pregnancy_status: Optional[str] = "not_pregnant"
+    pregnancy_weeks: Optional[int] = None
+    chronic_conditions: List[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+
+class CreateHouseholdSchema(BaseModel):
+    id: Optional[str] = None
+    external_id: str  # e.g. ASHA-WARD4-HH045
+    head_of_household: str
+    address: str
+    ward: str = "Ward 4, Aluva"
+    members_count: int = 1
+    malnutrition_risk: Optional[str] = "Normal"
+

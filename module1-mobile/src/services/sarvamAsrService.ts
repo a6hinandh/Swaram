@@ -79,9 +79,9 @@ function parseAndFormatTranscript(
 
   // Formatted Console Output
   console.log('\n======================================================');
-  console.log(`🗣️ SARVAM AI ASR TRANSCRIPTION (MALAYALAM - ${model}):`);
+  console.log(`[Sarvam AI ASR] TRANSCRIPTION (MALAYALAM - ${model}):`);
   console.log(finalTranscript);
-  console.log(`⏱️ Duration: ${executionTimeMs}ms | Request ID: ${json.request_id || 'N/A'}`);
+  console.log(`Duration: ${executionTimeMs}ms | Request ID: ${json.request_id || 'N/A'}`);
   console.log('======================================================\n');
 
   return {

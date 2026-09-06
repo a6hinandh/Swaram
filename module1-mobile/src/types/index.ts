@@ -12,8 +12,23 @@ export interface HouseholdSummary {
   malnutrition_risk?: string;
 }
 
+export interface HouseholdMember {
+  person_id: string;
+  household_id: string;
+  name: string;
+  age?: number;
+  gender?: string;
+  relationship?: string;
+  life_stage?: string;
+  pregnancy_status?: string;
+  pregnancy_weeks?: number;
+  chronic_conditions?: string[];
+  created_at?: string;
+}
+
 export interface AudioRecordingState {
   isRecording: boolean;
   durationMs: number;
   audioUri: string | null;
 }
+

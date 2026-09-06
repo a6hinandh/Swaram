@@ -4,12 +4,12 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Platform,
-  SafeAreaView
+  Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon, IconName } from './AppIcon';
 
-export type AppTab = 'core' | 'mental' | 'climate' | 'lifestyle' | 'vitals';
+export type AppTab = 'core' | 'lifestyle' | 'vitals' | 'mental' | 'climate' | 'profile';
 
 interface TabItem {
   id: AppTab;
@@ -18,11 +18,11 @@ interface TabItem {
 }
 
 const TABS: TabItem[] = [
-  { id: 'core', label: 'Survey', icon: 'mic' },
-  { id: 'mental', label: 'Mental', icon: 'mental' },
-  { id: 'climate', label: 'Climate', icon: 'climate' },
-  { id: 'lifestyle', label: 'CBAC Survey', icon: 'lifestyle' },
-  { id: 'vitals', label: 'Vitals', icon: 'vitals' }
+  { id: 'core', label: 'സർവേ', icon: 'mic' },
+  { id: 'lifestyle', label: 'CBAC', icon: 'lifestyle' },
+  { id: 'vitals', label: 'വൈറ്റൽസ്', icon: 'vitals' },
+  { id: 'mental', label: 'മാനസികം', icon: 'mental' },
+  { id: 'climate', label: 'കാലാവസ്ഥ', icon: 'climate' }
 ];
 
 interface BottomTabBarProps {
@@ -35,16 +35,16 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
   onTabSelect
 }) => {
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['bottom']} style={styles.safeArea}>
       <View style={styles.container}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
-          const iconColor = isActive ? '#065F46' : '#9CA3AF';
+          const iconColor = isActive ? '#047857' : '#64748B';
 
           return (
             <TouchableOpacity
               key={tab.id}
-              style={styles.tabButton}
+              style={[styles.tabButton, isActive && styles.activeTabButton]}
               onPress={() => onTabSelect(tab.id)}
               activeOpacity={0.7}
               accessibilityRole="button"
@@ -54,7 +54,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
               <View style={[styles.iconWrapper, isActive && styles.activeIconWrapper]}>
                 <AppIcon name={tab.icon} size={20} color={iconColor} />
               </View>
-              <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
+              <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]} numberOfLines={1}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -69,13 +69,27 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB'
+    borderTopColor: '#E2E8F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6
+      },
+      android: {
+        elevation: 10
+      },
+      web: {
+        boxShadow: '0 -3px 12px rgba(15, 23, 42, 0.06)'
+      }
+    })
   },
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    height: 58,
+    height: 62,
     paddingHorizontal: 6,
     backgroundColor: '#FFFFFF'
   },
@@ -83,25 +97,29 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4
+    paddingVertical: 6,
+    borderRadius: 10
   },
+  activeTabButton: {},
   iconWrapper: {
-    paddingHorizontal: 12,
-    paddingVertical: 3,
-    borderRadius: 14,
-    marginBottom: 2
+    paddingHorizontal: 14,
+    paddingVertical: 3.5,
+    borderRadius: 16,
+    marginBottom: 2,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   activeIconWrapper: {
-    backgroundColor: '#DCFCE7'
+    backgroundColor: '#ECFDF5'
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '500',
-    color: '#6B7280',
+    color: '#64748B',
     marginTop: 1
   },
   activeTabLabel: {
-    color: '#065F46',
+    color: '#047857',
     fontWeight: '700'
   }
 });
