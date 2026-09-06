@@ -11,3 +11,4 @@ export { MentalHealthScreen } from './mental_health/MentalHealthScreen';
 export { EnvironmentalRiskScreen } from './environmental_risk/EnvironmentalRiskScreen';
 export { NcdLifestyleScreen } from './ncd_lifestyle/NcdLifestyleScreen';
 export { VitalsBaselineScreen } from './vitals_baseline/VitalsBaselineScreen';
+export { AshaProfileScreen } from '../screens/AshaProfileScreen';

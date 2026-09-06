@@ -8,8 +8,9 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
-  SafeAreaView
+  Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '../shared/navigation/AppIcon';
 import {
   CookingFuelType,
@@ -215,13 +216,13 @@ export const EnvironmentalRiskScreen: React.FC = () => {
       setSavedSuccess(true);
 
       const careGapSummary = activeCareGaps.length > 0
-        ? `\n\n📌 Care Gaps Updated (${activeCareGaps.length}):\n${activeCareGaps.map(g => `• ${g.description} [${g.priority.toUpperCase()}]`).join('\n')}`
+        ? `\n\nCare Gaps Updated (${activeCareGaps.length}):\n${activeCareGaps.map(g => `- ${g.description} [${g.priority.toUpperCase()}]`).join('\n')}`
         : '';
 
-      const isMongo = res.data.storage === 'mongodb';
+      const isMongo = res.data?.storage === 'mongodb';
       const storageInfo = isMongo
-        ? '🍃 Saved to MongoDB Database (Collection: environmental_assessments)'
-        : `💾 Saved to Local Ledger (Backend unreachable at ${getActiveHost()}:8000)`;
+        ? 'സേവ് ചെയ്തു: MongoDB Database (Collection: environmental_assessments)'
+        : `സേവ് ചെയ്തു: Local Ledger (Backend offline at ${getActiveHost()}:8000)`;
 
       Alert.alert(
         isMongo ? 'പരിസ്ഥിതി ആരോഗ്യ രേഖ സേവ് ചെയ്തു' : 'ഓഫ്‌ലൈൻ രേഖ',
@@ -240,30 +241,47 @@ export const EnvironmentalRiskScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.container}>
         {/* Screen Header */}
         <View style={styles.headerBlock}>
-          <Text style={styles.title}>Environmental & Climate Risk Monitoring</Text>
-          <Text style={styles.subtitle}>
-            പരിസ്ഥിതി സാഹചര്യങ്ങളും വ്യക്തിഗത ആരോഗ്യ മുൻഗണനകളും (Proactive Care-Gap Integration)
-          </Text>
+          <View style={styles.headerTitleRow}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <AppIcon name="climate" size={20} color="#047857" />
+                <Text style={styles.title}>കാലാവസ്ഥാ & പരിസ്ഥിതി നിരീക്ഷണം</Text>
+              </View>
+              <Text style={styles.subtitle}>
+                പരിസ്ഥിതി ഘടകങ്ങളും വ്യക്തിഗത ആരോഗ്യ മുൻഗണനകളും (Proactive Care-Gap Integration)
+              </Text>
+            </View>
+            <View style={styles.nhmBadge}>
+              <Text style={styles.nhmBadgeText}>Open-Meteo • Live</Text>
+            </View>
+          </View>
         </View>
 
         {/* 1. Location & Ambient Climate Context Card */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardSectionTitle}>📍 Ward Location & Ambient Context</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <AppIcon name="location" size={16} color="#047857" />
+                <Text style={styles.cardSectionTitle}>വാർഡ് ലൊക്കേഷൻ & കാലാവസ്ഥ</Text>
+              </View>
               <Text style={styles.cardSectionSubtitle}>
-                {selectedLocation.district} • {weather.isLiveFetched ? '⚡ Live Open-Meteo' : '📱 Local Cached'}
+                {selectedLocation.district} • {weather.isLiveFetched ? 'തത്സമയം (Live Open-Meteo)' : 'ഓഫ്‌ലൈൻ (Local Cached)'}
               </Text>
             </View>
             <TouchableOpacity
               style={styles.refreshBtn}
               onPress={handleRefresh}
               disabled={isLoadingWeather}
+              activeOpacity={0.7}
             >
               {isLoadingWeather ? (
                 <ActivityIndicator size="small" color="#065F46" />
               ) : (
-                <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <AppIcon name="refresh" size={12} color="#065F46" />
+                  <Text style={styles.refreshBtnText}>പുതുക്കുക</Text>
+                </View>
               )}
             </TouchableOpacity>
           </View>
@@ -277,7 +295,13 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                 selectedLocation.id === 'gps_device' && styles.locChipActive
               ]}
               onPress={handleUseCurrentGps}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="satellite"
+                size={13}
+                color={selectedLocation.id === 'gps_device' ? '#FFFFFF' : '#1D4ED8'}
+              />
               <Text
                 style={[
                   styles.locChipText,
@@ -285,7 +309,7 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                   selectedLocation.id === 'gps_device' && styles.locChipTextActive
                 ]}
               >
-                📍 My GPS Location
+                തത്സമയ ലൊക്കേഷൻ (Live GPS)
               </Text>
             </TouchableOpacity>
 
@@ -297,6 +321,7 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                   selectedLocation.id === loc.id && styles.locChipActive
                 ]}
                 onPress={() => setSelectedLocation(loc)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[
@@ -313,19 +338,21 @@ export const EnvironmentalRiskScreen: React.FC = () => {
           {/* Detected Area Banner */}
           <View style={styles.detectedAreaBanner}>
             <View style={styles.detectedAreaIconBox}>
-              <Text style={styles.detectedAreaIcon}>
-                {selectedLocation.id === 'gps_device' ? '🛰️' : '📍'}
-              </Text>
+              <AppIcon
+                name={selectedLocation.id === 'gps_device' ? 'satellite' : 'location'}
+                size={18}
+                color="#047857"
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.detectedAreaLabel}>
-                {selectedLocation.id === 'gps_device' ? 'Live GPS Location' : 'Selected Health Ward'}:
+                {selectedLocation.id === 'gps_device' ? 'തത്സമയ ലൊക്കേഷൻ (Live GPS)' : 'തിരഞ്ഞെടുത്ത വാർഡ്'}:
               </Text>
               <Text style={styles.detectedAreaName}>
                 {weather.locationName || selectedLocation.name}
               </Text>
               <Text style={styles.detectedAreaCoords}>
-                GPS: {weather.latitude.toFixed(4)}°N, {weather.longitude.toFixed(4)}°E • Updated {weather.fetchedAt}
+                GPS: {weather.latitude.toFixed(4)}°N, {weather.longitude.toFixed(4)}°E • {weather.fetchedAt}
               </Text>
             </View>
             <View style={[styles.sourceBadge, weather.isLiveFetched ? styles.sourceBadgeLive : styles.sourceBadgeSim]}>
@@ -333,30 +360,42 @@ export const EnvironmentalRiskScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Ambient Context Grid (Treated as CONTEXT, not diagnosis) */}
+          {/* Ambient Context Grid */}
           <View style={styles.weatherGrid}>
             <View style={styles.weatherBox}>
-              <Text style={styles.weatherLabel}>Temperature</Text>
+              <View style={styles.weatherBoxHeader}>
+                <AppIcon name="thermometer" size={15} color="#D97706" />
+                <Text style={styles.weatherLabel}>താപനില (Temp)</Text>
+              </View>
               <Text style={styles.weatherVal}>{weather.temperatureCelsius}°C</Text>
-              <Text style={styles.weatherSub}>Heat: {envContext.heatRisk.toUpperCase()}</Text>
+              <Text style={styles.weatherSub}>ചൂട്: {envContext.heatRisk.toUpperCase()}</Text>
             </View>
 
             <View style={styles.weatherBox}>
-              <Text style={styles.weatherLabel}>Precipitation</Text>
+              <View style={styles.weatherBoxHeader}>
+                <AppIcon name="cloud-rain" size={15} color="#2563EB" />
+                <Text style={styles.weatherLabel}>മഴ (Rain)</Text>
+              </View>
               <Text style={[styles.weatherVal, envContext.heavyRain ? styles.textRain : null]}>
                 {weather.precipitationMm} mm
               </Text>
-              <Text style={styles.weatherSub}>{envContext.heavyRain ? 'Heavy Rain' : 'Normal'}</Text>
+              <Text style={styles.weatherSub}>{envContext.heavyRain ? 'ശക്തമായ മഴ' : 'സാധാരണ നില'}</Text>
             </View>
 
             <View style={styles.weatherBox}>
-              <Text style={styles.weatherLabel}>Humidity</Text>
+              <View style={styles.weatherBoxHeader}>
+                <AppIcon name="droplet" size={15} color="#0284C7" />
+                <Text style={styles.weatherLabel}>ഈർപ്പം (Humidity)</Text>
+              </View>
               <Text style={styles.weatherVal}>{weather.humidityPercent}%</Text>
-              <Text style={styles.weatherSub}>{weather.humidityPercent >= 80 ? 'High' : 'Normal'}</Text>
+              <Text style={styles.weatherSub}>{weather.humidityPercent >= 80 ? 'ഈർപ്പം കൂടുതൽ' : 'സാധാരണ നില'}</Text>
             </View>
 
             <View style={styles.weatherBox}>
-              <Text style={styles.weatherLabel}>Air Quality (AQI)</Text>
+              <View style={styles.weatherBoxHeader}>
+                <AppIcon name="wind" size={15} color={weather.aqiUs > 100 ? '#DC2626' : '#059669'} />
+                <Text style={styles.weatherLabel}>വായു ഗുണനിലവാരം</Text>
+              </View>
               <Text style={[styles.weatherVal, weather.aqiUs > 100 ? styles.textAqiHigh : styles.textAqiGood]}>
                 {weather.aqiUs}
               </Text>
@@ -367,72 +406,117 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 
         {/* 2. Household Vulnerability & Care Gap Context */}
         <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>🏠 Household Vulnerability & Care Context</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <AppIcon name="home" size={16} color="#1E40AF" />
+            <Text style={styles.cardSectionTitle}>കുടുംബത്തിലെ മുൻഗണനാ വിഭാഗങ്ങൾ</Text>
+          </View>
           <Text style={styles.cardSectionSubtitle}>
-            Matched against ASHA care register to identify who requires attention:
+            ആശാ കെയർ രജിസ്റ്ററുമായി ബന്ധിപ്പിച്ച പ്രത്യേക ശ്രദ്ധ ആവശ്യമുള്ള വിഭാഗങ്ങൾ:
           </Text>
 
           <View style={styles.chipGrid}>
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasPregnantMember && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasPregnantMember')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="pregnant"
+                size={15}
+                color={vulnerability.hasPregnantMember ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasPregnantMember && styles.vulnChipTextActive]}>
-                🤰 ഗർഭിണി (Pregnant)
+                ഗർഭിണി (Pregnant)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasPendingANC && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasPendingANC')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="calendar"
+                size={15}
+                color={vulnerability.hasPendingANC ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasPendingANC && styles.vulnChipTextActive]}>
-                📅 ബാക്കിയുള്ള ANC (Pending ANC)
+                ബാക്കിയുള്ള ANC (Pending ANC)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasChild && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasChild')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="baby"
+                size={15}
+                color={vulnerability.hasChild ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasChild && styles.vulnChipTextActive]}>
-                👶 കുട്ടികൾ (Child &lt; 5)
+                കുട്ടികൾ (Child &lt; 5)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasElderly && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasElderly')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="elderly"
+                size={15}
+                color={vulnerability.hasElderly ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasElderly && styles.vulnChipTextActive]}>
-                👵 മുതിർന്നവർ (Elderly &gt; 65)
+                മുതിർന്നവർ (Elderly &gt; 65)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasChronicIllness && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasChronicIllness')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="heart"
+                size={15}
+                color={vulnerability.hasChronicIllness ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasChronicIllness && styles.vulnChipTextActive]}>
-                🏥 തുടർചികിത്സ / മരുന്ന് (Chronic Care)
+                തുടർചികിത്സ / മരുന്ന് (Chronic Care)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasPendingVaccination && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasPendingVaccination')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="syringe"
+                size={15}
+                color={vulnerability.hasPendingVaccination ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasPendingVaccination && styles.vulnChipTextActive]}>
-                💉 വാക്സിനേഷൻ ബാക്കി (Pending Vaccine)
+                വാക്സിനേഷൻ ബാക്കി (Pending Vaccine)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.vulnChip, vulnerability.hasRespiratoryCondition && styles.vulnChipActive]}
               onPress={() => toggleVulnerability('hasRespiratoryCondition')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="wind"
+                size={15}
+                color={vulnerability.hasRespiratoryCondition ? '#047857' : '#475569'}
+              />
               <Text style={[styles.vulnChipText, vulnerability.hasRespiratoryCondition && styles.vulnChipTextActive]}>
-                🫁 ശ്വാസകോശ രോഗം (Asthma/COPD)
+                ശ്വാസകോശ രോഗം (Asthma/COPD)
               </Text>
             </TouchableOpacity>
           </View>
@@ -440,16 +524,25 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 
         {/* 3. Physical Environmental Hazards */}
         <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>🏡 Physical Environmental Hazards</Text>
-          <Text style={styles.cardSectionSubtitle}>Drinking water source, cooking fuel, and surroundings</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <AppIcon name="shield" size={16} color="#047857" />
+            <Text style={styles.cardSectionTitle}>ഭൗതിക പരിസ്ഥിതി അപായ ഘടകങ്ങൾ</Text>
+          </View>
+          <Text style={styles.cardSectionSubtitle}>കുടിവെള്ള ഉറവിടം, പാചക ഇന്ധനം, പരിസര ശുചിത്വം</Text>
 
           {/* Cooking Fuel */}
-          <Text style={styles.toggleGroupLabel}>Indoor Cooking Fuel:</Text>
+          <Text style={styles.toggleGroupLabel}>അടുക്കള ഇന്ധനം (Indoor Cooking Fuel):</Text>
           <View style={styles.toggleRow}>
             <TouchableOpacity
               style={[styles.toggleBtn, cookingFuel === 'lpg' && styles.toggleBtnActive]}
               onPress={() => setCookingFuel('lpg')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="zap"
+                size={14}
+                color={cookingFuel === 'lpg' ? '#FFFFFF' : '#047857'}
+              />
               <Text style={[styles.toggleBtnText, cookingFuel === 'lpg' && styles.toggleBtnTextActive]}>
                 LPG Clean (ഗ്യാസ്)
               </Text>
@@ -457,7 +550,13 @@ export const EnvironmentalRiskScreen: React.FC = () => {
             <TouchableOpacity
               style={[styles.toggleBtn, cookingFuel === 'biomass_chulha' && styles.toggleBtnActive]}
               onPress={() => setCookingFuel('biomass_chulha')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="flame"
+                size={14}
+                color={cookingFuel === 'biomass_chulha' ? '#FFFFFF' : '#D97706'}
+              />
               <Text style={[styles.toggleBtnText, cookingFuel === 'biomass_chulha' && styles.toggleBtnTextActive]}>
                 Biomass Chulha (വിറക്)
               </Text>
@@ -465,12 +564,18 @@ export const EnvironmentalRiskScreen: React.FC = () => {
           </View>
 
           {/* Water Source */}
-          <Text style={[styles.toggleGroupLabel, { marginTop: 12 }]}>Drinking Water Safety:</Text>
+          <Text style={[styles.toggleGroupLabel, { marginTop: 12 }]}>കുടിവെള്ള സുരക്ഷ (Drinking Water Safety):</Text>
           <View style={styles.toggleRow}>
             <TouchableOpacity
               style={[styles.toggleBtn, drinkingWaterSafety === 'safe' && styles.toggleBtnActive]}
               onPress={() => setDrinkingWaterSafety('safe')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="droplet"
+                size={14}
+                color={drinkingWaterSafety === 'safe' ? '#FFFFFF' : '#0284C7'}
+              />
               <Text style={[styles.toggleBtnText, drinkingWaterSafety === 'safe' && styles.toggleBtnTextActive]}>
                 Piped / Safe (ശുദ്ധജലം)
               </Text>
@@ -478,7 +583,13 @@ export const EnvironmentalRiskScreen: React.FC = () => {
             <TouchableOpacity
               style={[styles.toggleBtn, drinkingWaterSafety === 'open_well_untested' && styles.toggleBtnActive]}
               onPress={() => setDrinkingWaterSafety('open_well_untested')}
+              activeOpacity={0.7}
             >
+              <AppIcon
+                name="alert"
+                size={14}
+                color={drinkingWaterSafety === 'open_well_untested' ? '#FFFFFF' : '#D97706'}
+              />
               <Text style={[styles.toggleBtnText, drinkingWaterSafety === 'open_well_untested' && styles.toggleBtnTextActive]}>
                 Open Well Untested (തുറന്ന കിണർ)
               </Text>
@@ -488,38 +599,41 @@ export const EnvironmentalRiskScreen: React.FC = () => {
           {/* Switches */}
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.switchLabel}>Water Stagnation Near House</Text>
-              <Text style={styles.switchSubtext}>15 മീറ്ററിനുള്ളിൽ കെട്ടിക്കിടക്കുന്ന വെള്ളം (Vector breeding risk)</Text>
+              <Text style={styles.switchLabel}>വീടിന് സമീപം വെള്ളക്കെട്ട് (Water Stagnation)</Text>
+              <Text style={styles.switchSubtext}>15 മീറ്ററിനുള്ളിൽ കെട്ടിക്കിടക്കുന്ന വെള്ളം (കൊതുക് പെരുകൽ സാധ്യത)</Text>
             </View>
             <Switch
               value={hasWaterStagnation}
               onValueChange={setHasWaterStagnation}
-              trackColor={{ false: '#D1D5DB', true: '#065F46' }}
+              trackColor={{ false: '#D1D5DB', true: '#047857' }}
             />
           </View>
 
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.switchLabel}>Lowland Flood Prone Zone</Text>
-              <Text style={styles.switchSubtext}>വെള്ളപ്പൊക്ക സാധ്യതയുള്ള താഴ്ന്ന പ്രദേശം (Road waterlogging)</Text>
+              <Text style={styles.switchLabel}>വെള്ളപ്പൊക്ക സാധ്യതയുള്ള താഴ്ന്ന പ്രദേശം (Flood Prone)</Text>
+              <Text style={styles.switchSubtext}>മഴക്കാലത്ത് വെള്ളം കയറാൻ സാധ്യതയുള്ള മേഖല</Text>
             </View>
             <Switch
               value={isFloodProne}
               onValueChange={setIsFloodProne}
-              trackColor={{ false: '#D1D5DB', true: '#065F46' }}
+              trackColor={{ false: '#D1D5DB', true: '#047857' }}
             />
           </View>
         </View>
 
-        {/* 4. Targeted Conversational Questions (Triggered ONLY when Environmental + Vulnerability Context Align) */}
+        {/* 4. Targeted Conversational Questions */}
         <View style={styles.adaptiveSection}>
           <View style={styles.sectionHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>
-                🎯 Targeted Conversational Follow-Ups ({targetedQuestions.length})
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <AppIcon name="target" size={18} color="#047857" />
+                <Text style={styles.sectionTitle}>
+                  വ്യക്തിഗത ഫോളോ-അപ്പ് ചോദ്യങ്ങൾ ({targetedQuestions.length})
+                </Text>
+              </View>
               <Text style={styles.sectionSubtitle}>
-                ചൂട്, മഴ, ശുദ്ധജലം എന്നിവ അടിസ്ഥാനമാക്കിയുള്ള വ്യക്തിഗത ചോദ്യങ്ങൾ
+                ചൂട്, മഴ, കുടിവെള്ളം എന്നിവ അടിസ്ഥാനമാക്കിയുള്ള ലക്ഷ്യബോധമുള്ള ചോദ്യങ്ങൾ
               </Text>
             </View>
             <View style={styles.activeBadge}>
@@ -529,9 +643,10 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 
           {targetedQuestions.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyCardTitle}>✓ No Acute Climate-Vulnerability Flags</Text>
+              <AppIcon name="check" size={20} color="#047857" />
+              <Text style={styles.emptyCardTitle}>പ്രത്യേക കാലാവസ്ഥാ അപായ ഘടകങ്ങൾ ഇല്ല</Text>
               <Text style={styles.emptyCardSub}>
-                Ambient conditions and household context are within safe baseline bounds. ASHA workflow is not interrupted.
+                പരിസ്ഥിതി ഘടകങ്ങളും കുടുംബ സാഹചര്യങ്ങളും സുരക്ഷിത പരിധിയിലാണ്.
               </Text>
             </View>
           ) : (
@@ -566,15 +681,20 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                           : styles.badgeMedium
                       ]}
                     >
+                      <AppIcon
+                        name={q.impactsCareGap ? 'target' : q.urgency === 'high' ? 'alert' : 'shield'}
+                        size={11}
+                        color="#FFFFFF"
+                      />
                       <Text style={styles.urgencyBadgeText}>
-                        {q.impactsCareGap ? '📌 Care Gap Priority' : q.urgency === 'high' ? '🚨 High Concern' : '⚠️ Preventive'}
+                        {q.impactsCareGap ? 'Care Gap Priority' : q.urgency === 'high' ? 'High Concern' : 'Preventive'}
                       </Text>
                     </View>
                   </View>
 
                   {/* Context Reason */}
                   <View style={styles.contextBadge}>
-                    <Text style={styles.contextBadgeText}>Trigger: {q.contextReason}</Text>
+                    <Text style={styles.contextBadgeText}>ട്രിഗ്ഗർ: {q.contextReason}</Text>
                   </View>
 
                   {/* Question Text */}
@@ -585,7 +705,7 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 
                   {/* ASHA Interactive Answer Buttons */}
                   <View style={styles.answerRow}>
-                    <Text style={styles.answerPrompt}>ASHA സ്ഥിരീകരണം:</Text>
+                    <Text style={styles.answerPrompt}>ആശാ സ്ഥിരീകരണം:</Text>
                     <View style={styles.btnGroup}>
                       <TouchableOpacity
                         style={[
@@ -593,14 +713,20 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                           currentAnswer === 'yes' && styles.ansBtnYesActive
                         ]}
                         onPress={() => handleAnswer(q.id, 'yes')}
+                        activeOpacity={0.7}
                       >
+                        <AppIcon
+                          name="check"
+                          size={14}
+                          color={currentAnswer === 'yes' ? '#FFFFFF' : '#047857'}
+                        />
                         <Text
                           style={[
                             styles.ansBtnText,
                             currentAnswer === 'yes' && styles.ansBtnTextActive
                           ]}
                         >
-                          ✓ Yes (ഉണ്ട്)
+                          ഉണ്ട് (Yes)
                         </Text>
                       </TouchableOpacity>
 
@@ -610,14 +736,20 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                           currentAnswer === 'no' && styles.ansBtnNoActive
                         ]}
                         onPress={() => handleAnswer(q.id, 'no')}
+                        activeOpacity={0.7}
                       >
+                        <AppIcon
+                          name="close"
+                          size={14}
+                          color={currentAnswer === 'no' ? '#FFFFFF' : '#DC2626'}
+                        />
                         <Text
                           style={[
                             styles.ansBtnText,
                             currentAnswer === 'no' && styles.ansBtnTextActive
                           ]}
                         >
-                          ✗ No (ഇല്ല)
+                          ഇല്ല (No)
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -626,9 +758,12 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                   {/* Adaptive Follow-up question if answer triggers it */}
                   {showFollowUp && q.followUpQuestion && (
                     <View style={styles.followUpBox}>
-                      <Text style={styles.followUpTitle}>
-                        ↳ തുടർചോദ്യം (Adaptive Follow-Up):
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <AppIcon name="chevron-right" size={13} color="#0284C7" />
+                        <Text style={styles.followUpTitle}>
+                          തുടർചോദ്യം (Adaptive Follow-Up):
+                        </Text>
+                      </View>
                       <Text style={styles.followUpTextMl}>{q.followUpQuestion.questionMl}</Text>
                       <Text style={styles.followUpTextEn}>"{q.followUpQuestion.questionEn}"</Text>
 
@@ -640,14 +775,20 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                               followUpAnswers[q.followUpQuestion.id] === 'yes' && styles.ansBtnYesActive
                             ]}
                             onPress={() => handleFollowUpAnswer(q.followUpQuestion!.id, 'yes')}
+                            activeOpacity={0.7}
                           >
+                            <AppIcon
+                              name="check"
+                              size={14}
+                              color={followUpAnswers[q.followUpQuestion.id] === 'yes' ? '#FFFFFF' : '#047857'}
+                            />
                             <Text
                               style={[
                                 styles.ansBtnText,
                                 followUpAnswers[q.followUpQuestion.id] === 'yes' && styles.ansBtnTextActive
                               ]}
                             >
-                              ✓ Yes
+                              ഉണ്ട് (Yes)
                             </Text>
                           </TouchableOpacity>
 
@@ -657,21 +798,30 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                               followUpAnswers[q.followUpQuestion.id] === 'no' && styles.ansBtnNoActive
                             ]}
                             onPress={() => handleFollowUpAnswer(q.followUpQuestion!.id, 'no')}
+                            activeOpacity={0.7}
                           >
+                            <AppIcon
+                              name="close"
+                              size={14}
+                              color={followUpAnswers[q.followUpQuestion.id] === 'no' ? '#FFFFFF' : '#DC2626'}
+                            />
                             <Text
                               style={[
                                 styles.ansBtnText,
                                 followUpAnswers[q.followUpQuestion.id] === 'no' && styles.ansBtnTextActive
                               ]}
                             >
-                              ✗ No
+                              ഇല്ല (No)
                             </Text>
                           </TouchableOpacity>
                         </View>
                       </View>
 
                       <View style={styles.actionBox}>
-                        <Text style={styles.actionHeader}>💡 തുടർനടപടി (Action):</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                          <AppIcon name="lightbulb" size={14} color="#1E40AF" />
+                          <Text style={styles.actionHeader}>തുടർനടപടി (Action):</Text>
+                        </View>
                         <Text style={styles.actionTextMl}>{q.followUpQuestion.actionMl}</Text>
                         <Text style={styles.actionTextEn}>{q.followUpQuestion.actionEn}</Text>
                       </View>
@@ -681,7 +831,10 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                   {/* Primary Outcome / Action guidance when answered */}
                   {currentAnswer && !showFollowUp && (
                     <View style={styles.actionBox}>
-                      <Text style={styles.actionHeader}>💡 നിർദേശിക്കേണ്ടത് (Recommended Action):</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                        <AppIcon name="lightbulb" size={14} color="#1E40AF" />
+                        <Text style={styles.actionHeader}>നിർദേശിക്കേണ്ട നടപടി (Recommended Action):</Text>
+                      </View>
                       <Text style={styles.actionTextMl}>
                         {currentAnswer === 'yes' ? q.yesOutcomeMl : q.noOutcomeMl}
                       </Text>
@@ -700,9 +853,9 @@ export const EnvironmentalRiskScreen: React.FC = () => {
         {activeCareGaps.length > 0 && (
           <View style={styles.careGapBanner}>
             <View style={styles.careGapBannerHeader}>
-              <AppIcon name="alert" size={20} color="#B91C1C" />
+              <AppIcon name="alert" size={18} color="#B91C1C" />
               <Text style={styles.careGapBannerTitle}>
-                Proactive Care Gap Escalations ({activeCareGaps.length})
+                സജീവ പരിചരണ വിടവുകൾ (Active Care Gaps: {activeCareGaps.length})
               </Text>
             </View>
             {activeCareGaps.map((gap, idx) => (
@@ -712,11 +865,14 @@ export const EnvironmentalRiskScreen: React.FC = () => {
                   <Text style={styles.careGapItemPriority}>PRIORITY: {gap.priority.toUpperCase()}</Text>
                 </View>
                 <Text style={styles.careGapItemDesc}>{gap.description}</Text>
-                <Text style={styles.careGapItemAction}>↳ Action: {gap.recommended_action}</Text>
+                <Text style={styles.careGapItemAction}>നടപടി (Action): {gap.recommended_action}</Text>
                 {gap.access_barrier_type && (
-                  <Text style={styles.careGapItemBarrier}>
-                    🚧 Barrier: {gap.access_barrier_type.replace('_', ' ')}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <AppIcon name="alert" size={12} color="#B91C1C" />
+                    <Text style={styles.careGapItemBarrier}>
+                      തടസ്സം: {gap.access_barrier_type.replace('_', ' ')}
+                    </Text>
+                  </View>
                 )}
               </View>
             ))}
@@ -728,18 +884,19 @@ export const EnvironmentalRiskScreen: React.FC = () => {
           style={[styles.primaryButton, isSaving && { opacity: 0.7 }]}
           onPress={handleSaveAssessment}
           disabled={isSaving}
+          activeOpacity={0.8}
         >
           {isSaving ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <AppIcon name="check" size={18} color="#FFFFFF" />
+            <AppIcon name="save" size={18} color="#FFFFFF" />
           )}
           <Text style={styles.primaryButtonText}>
             {isSaving
-              ? 'Saving to MongoDB...'
+              ? 'ഡാറ്റാബേസിലേക്ക് സൂക്ഷിക്കുന്നു...'
               : savedSuccess
-              ? '✓ Assessment Saved'
-              : 'Confirm & Save Climate Health Record'}
+              ? 'പരിസ്ഥിതി രേഖ സേവ് ചെയ്തു'
+              : 'പരിസ്ഥിതി രേഖ സേവ് ചെയ്യുക (Save Record)'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -750,94 +907,135 @@ export const EnvironmentalRiskScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB'
+    backgroundColor: '#F8FAFC'
   },
   container: {
     padding: 16,
     paddingBottom: 40
   },
   headerBlock: {
-    marginBottom: 14
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+    elevation: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+      }
+    })
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10
   },
   title: {
-    fontSize: 19,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
     letterSpacing: -0.3
   },
   subtitle: {
     fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 17
+  },
+  nhmBadge: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6
+  },
+  nhmBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#047857'
   },
   card: {
     backgroundColor: '#FFFFFF',
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+    elevation: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+      }
+    })
   },
   cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8
+    marginBottom: 10
   },
   cardSectionTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111827'
+    fontWeight: '800',
+    color: '#0F172A'
   },
   cardSectionSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 1
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2
   },
   refreshBtn: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     backgroundColor: '#ECFDF5',
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#A7F3D0'
   },
   refreshBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#065F46'
   },
   locationScroll: {
     marginVertical: 8
   },
   locChip: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
     marginRight: 6,
     borderWidth: 1,
-    borderColor: '#E5E7EB'
+    borderColor: '#E2E8F0'
   },
   locChipActive: {
-    backgroundColor: '#065F46',
-    borderColor: '#065F46'
+    backgroundColor: '#047857',
+    borderColor: '#047857'
   },
   locGpsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: '#EFF6FF',
-    borderColor: '#93C5FD'
+    borderColor: '#BFDBFE'
   },
   locGpsChipText: {
     color: '#1D4ED8',
     fontWeight: '700'
   },
   locChipText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#4B5563'
+    color: '#475569'
   },
   locChipTextActive: {
-    color: '#FFFFFF'
+    color: '#FFFFFF',
+    fontWeight: '700'
   },
   detectedAreaBanner: {
     flexDirection: 'row',
@@ -847,40 +1045,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BBF7D0',
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     marginVertical: 10
   },
   detectedAreaIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#DCFCE7',
     alignItems: 'center',
-    justifyContent: 'center'
-  },
-  detectedAreaIcon: {
-    fontSize: 16
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#86EFAC'
   },
   detectedAreaLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: '#15803D',
     textTransform: 'uppercase',
-    letterSpacing: 0.3
+    letterSpacing: 0.4
   },
   detectedAreaName: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0F172A',
     marginTop: 1
   },
   detectedAreaCoords: {
-    fontSize: 11,
-    color: '#4B5563',
+    fontSize: 10,
+    color: '#64748B',
     marginTop: 1
   },
   sourceBadge: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6
   },
@@ -888,7 +1085,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#059669'
   },
   sourceBadgeSim: {
-    backgroundColor: '#6B7280'
+    backgroundColor: '#64748B'
   },
   sourceBadgeText: {
     fontSize: 10,
@@ -903,27 +1100,34 @@ const styles = StyleSheet.create({
   },
   weatherBox: {
     flex: 1,
-    minWidth: '45%',
-    backgroundColor: '#F9FAFB',
+    minWidth: '46%',
+    backgroundColor: '#F8FAFC',
     padding: 10,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB'
+    borderColor: '#E2E8F0'
+  },
+  weatherBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5
   },
   weatherLabel: {
     fontSize: 11,
-    color: '#6B7280'
+    color: '#64748B',
+    fontWeight: '600'
   },
   weatherVal: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
-    color: '#111827',
-    marginTop: 2
+    color: '#0F172A',
+    marginTop: 4
   },
   weatherSub: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '600'
   },
   textRain: {
     color: '#2563EB'
@@ -941,32 +1145,36 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   vulnChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F8FAFC',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB'
+    borderColor: '#E2E8F0'
   },
   vulnChipActive: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B'
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+    borderWidth: 1.5
   },
   vulnChipText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#4B5563'
+    color: '#475569'
   },
   vulnChipTextActive: {
-    color: '#92400E',
+    color: '#065F46',
     fontWeight: '700'
   },
   toggleGroupLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#374151',
+    color: '#334155',
     marginBottom: 6,
-    marginTop: 6
+    marginTop: 8
   },
   toggleRow: {
     flexDirection: 'row',
@@ -975,44 +1183,47 @@ const styles = StyleSheet.create({
   },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
     paddingHorizontal: 10,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    alignItems: 'center'
+    borderColor: '#E2E8F0'
   },
   toggleBtnActive: {
-    backgroundColor: '#065F46',
-    borderColor: '#065F46'
+    backgroundColor: '#047857',
+    borderColor: '#047857'
   },
   toggleBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#4B5563'
+    color: '#475569'
   },
   toggleBtnTextActive: {
-    color: '#FFFFFF'
+    color: '#FFFFFF',
+    fontWeight: '700'
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    marginTop: 4
+    borderTopColor: '#F1F5F9'
   },
   switchLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1F2937'
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B'
   },
   switchSubtext: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 1
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2
   },
   adaptiveSection: {
     marginTop: 8,
@@ -1025,54 +1236,61 @@ const styles = StyleSheet.create({
     marginBottom: 10
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827'
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A'
   },
   sectionSubtitle: {
     fontSize: 11,
-    color: '#6B7280',
-    marginTop: 1
+    color: '#64748B',
+    marginTop: 2
   },
   activeBadge: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#C7D2FE'
+    borderColor: '#BFDBFE'
   },
   activeBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#4338CA'
+    fontWeight: '800',
+    color: '#1D4ED8'
   },
   emptyCard: {
     backgroundColor: '#F0FDF4',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#BBF7D0',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 4
   },
   emptyCardTitle: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#15803D'
   },
   emptyCardSub: {
     fontSize: 11,
-    color: '#4B5563',
+    color: '#475569',
     textAlign: 'center',
-    marginTop: 4
+    marginTop: 2
   },
   questionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12
+    borderColor: '#E2E8F0',
+    marginBottom: 12,
+    elevation: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+      }
+    })
   },
   questionCardCareGap: {
     borderColor: '#FCA5A5',
@@ -1083,7 +1301,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFAF0'
   },
   questionCardMedium: {
-    borderColor: '#E5E7EB'
+    borderColor: '#E2E8F0'
   },
   qHeader: {
     flexDirection: 'row',
@@ -1098,15 +1316,18 @@ const styles = StyleSheet.create({
   qTriggerTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#111827'
+    color: '#0F172A'
   },
   qTriggerTitleMl: {
-    fontSize: 12,
-    color: '#4B5563',
+    fontSize: 11,
+    color: '#475569',
     marginTop: 1
   },
   urgencyBadge: {
-    paddingHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6
   },
@@ -1125,35 +1346,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF'
   },
   contextBadge: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F1F5F9',
     alignSelf: 'flex-start',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
-    marginBottom: 8
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
   },
   contextBadgeText: {
     fontSize: 10,
-    color: '#4B5563',
+    color: '#475569',
     fontWeight: '600'
   },
   qBodyBox: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAFC',
     padding: 10,
-    borderRadius: 6,
+    borderRadius: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#065F46',
+    borderLeftColor: '#047857',
     marginBottom: 10
   },
   qTextMl: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#111827',
+    color: '#0F172A',
     lineHeight: 18
   },
   qTextEn: {
-    fontSize: 12,
-    color: '#4B5563',
+    fontSize: 11,
+    color: '#64748B',
     fontStyle: 'italic',
     marginTop: 4
   },
@@ -1166,32 +1389,35 @@ const styles = StyleSheet.create({
   answerPrompt: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#374151'
+    color: '#334155'
   },
   btnGroup: {
     flexDirection: 'row',
     gap: 8
   },
   ansBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingVertical: 7,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#CBD5E1',
     backgroundColor: '#FFFFFF'
   },
   ansBtnYesActive: {
-    backgroundColor: '#065F46',
-    borderColor: '#065F46'
+    backgroundColor: '#047857',
+    borderColor: '#047857'
   },
   ansBtnNoActive: {
-    backgroundColor: '#4B5563',
-    borderColor: '#4B5563'
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626'
   },
   ansBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#374151'
+    color: '#334155'
   },
   ansBtnTextActive: {
     color: '#FFFFFF'
@@ -1200,46 +1426,46 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
-    padding: 8,
-    borderRadius: 6
+    padding: 10,
+    borderRadius: 8
   },
   followUpTitle: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#0284C7',
-    marginBottom: 4
+    color: '#0284C7'
   },
   followUpTextMl: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0F172A'
+    color: '#0F172A',
+    lineHeight: 16
   },
   followUpTextEn: {
-    fontSize: 11,
-    color: '#475569',
+    fontSize: 10,
+    color: '#64748B',
     fontStyle: 'italic',
     marginTop: 2
   },
   actionBox: {
     backgroundColor: '#EFF6FF',
-    padding: 8,
-    borderRadius: 6,
+    padding: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderColor: '#BFDBFE',
     marginTop: 8
   },
   actionHeader: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1E40AF',
-    marginBottom: 2
+    color: '#1E40AF'
   },
   actionTextMl: {
     fontSize: 11,
     color: '#1E3A8A',
-    fontWeight: '600'
+    fontWeight: '600',
+    lineHeight: 15
   },
   actionTextEn: {
     fontSize: 10,
@@ -1250,7 +1476,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
     borderColor: '#FECACA',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
     marginBottom: 14
   },
@@ -1269,8 +1495,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#FEE2E2',
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: 8,
+    padding: 10,
     marginBottom: 6
   },
   careGapItemTop: {
@@ -1284,44 +1510,50 @@ const styles = StyleSheet.create({
     color: '#DC2626'
   },
   careGapItemPriority: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: '#991B1B',
     backgroundColor: '#FEE2E2',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 4
   },
   careGapItemDesc: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#111827',
-    marginTop: 2
+    color: '#0F172A',
+    marginTop: 3
   },
   careGapItemAction: {
     fontSize: 11,
-    color: '#4B5563',
+    color: '#475569',
     marginTop: 2
   },
   careGapItemBarrier: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    color: '#B91C1C',
-    marginTop: 2
+    color: '#B91C1C'
   },
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#065F46',
-    paddingVertical: 13,
-    borderRadius: 8,
-    marginTop: 6
+    backgroundColor: '#047857',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 8,
+    marginBottom: 20,
+    elevation: 3,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(4, 120, 87, 0.2)'
+      }
+    })
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF'
   }
 });

@@ -6,7 +6,8 @@ import {
   Text,
   Platform
 } from 'react-native';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path, Circle } from 'react-native-svg';
 
 interface FloatingRobotButtonProps {
   onPress: () => void;
@@ -21,66 +22,50 @@ export const FloatingRobotButton: React.FC<FloatingRobotButtonProps> = ({
     <TouchableOpacity
       style={styles.container}
       onPress={onPress}
-      activeOpacity={0.82}
+      activeOpacity={0.88}
       accessibilityRole="button"
       accessibilityLabel="Open Swaram AI Assistant"
       accessibilityHint="Opens conversational ASHA frontline medical protocol chatbot"
     >
       <View style={styles.glowRing} />
-      <View style={styles.buttonBody}>
-        {/* Cute Futuristic Robot Head SVG */}
-        <Svg width={30} height={30} viewBox="0 0 24 24" fill="none">
-          {/* Antenna with LED bulb */}
+      
+      {/* Modern Gradient Circular Body */}
+      <LinearGradient
+        colors={['#042F2E', '#0D9488']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.buttonBody}
+      >
+        {/* Sleek Healthcare AI Assistant Icon */}
+        <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
+          {/* Friendly Bot Head / Chat Capsule */}
           <Path
-            d="M12 2.5v3.5"
-            stroke="#6EE7B7"
+            d="M12 3C7.03 3 3 6.8 3 11.5c0 2.22.92 4.24 2.45 5.75L4.5 21l4.2-1.35C9.8 19.88 10.88 20 12 20c4.97 0 9-3.8 9-8.5S16.97 3 12 3z"
+            stroke="#FFFFFF"
             strokeWidth="1.8"
             strokeLinecap="round"
+            strokeLinejoin="round"
           />
-          <Circle cx="12" cy="2" r="1.6" fill="#34D399" />
-
-          {/* Left & Right Ears / Sensors */}
-          <Rect x="2" y="10.5" width="2" height="5" rx="1" fill="#047857" stroke="#34D399" strokeWidth="0.8" />
-          <Rect x="20" y="10.5" width="2" height="5" rx="1" fill="#047857" stroke="#34D399" strokeWidth="0.8" />
-
-          {/* Robot Head Chassis */}
-          <Rect
-            x="4"
-            y="6"
-            width="16"
-            height="14"
-            rx="3.8"
-            fill="#064E3B"
-            stroke="#10B981"
-            strokeWidth="1.6"
-          />
-
-          {/* Visor Area */}
-          <Rect
-            x="6"
-            y="9"
-            width="12"
-            height="6"
-            rx="2"
-            fill="#022C22"
-          />
-
-          {/* Glowing Eyes */}
-          <Circle cx="9" cy="12" r="1.4" fill="#34D399" />
-          <Circle cx="15" cy="12" r="1.4" fill="#34D399" />
-
-          {/* Friendly Tech Mouth */}
+          {/* Friendly Eyes */}
+          <Circle cx="9.5" cy="11.5" r="1.3" fill="#5EEAD4" />
+          <Circle cx="14.5" cy="11.5" r="1.3" fill="#5EEAD4" />
+          {/* Gentle Smile */}
           <Path
-            d="M9.2 16.5h5.6"
-            stroke="#6EE7B7"
-            strokeWidth="1.4"
+            d="M10 14.5c.5.5 1.5.8 2 .8s1.5-.3 2-.8"
+            stroke="#5EEAD4"
+            strokeWidth="1.5"
             strokeLinecap="round"
+          />
+          {/* AI Sparkle on top corner */}
+          <Path
+            d="M19 3l.6 1.4L21 5l-1.4.6L19 7l-.6-1.4L17 5l1.4-.6z"
+            fill="#FDE047"
           />
         </Svg>
 
-        {/* Small Active/AI Chip Badge */}
+        {/* Small Active Online Indicator Dot */}
         <View style={styles.activeDot} />
-      </View>
+      </LinearGradient>
 
       {/* Unread / Notification Counter if applicable */}
       {unreadCount > 0 && (
@@ -95,7 +80,7 @@ export const FloatingRobotButton: React.FC<FloatingRobotButtonProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 76,
+    bottom: 80,
     right: 18,
     zIndex: 9999,
     width: 56,
@@ -104,16 +89,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#064E3B',
+        shadowColor: '#0D9488',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.38,
-        shadowRadius: 6
+        shadowOpacity: 0.35,
+        shadowRadius: 8
       },
       android: {
         elevation: 10
       },
       web: {
-        filter: 'drop-shadow(0px 4px 10px rgba(6, 78, 59, 0.45))',
+        boxShadow: '0 4px 14px rgba(13, 148, 136, 0.38)',
         cursor: 'pointer'
       }
     })
@@ -123,26 +108,25 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(16, 185, 129, 0.25)',
-    transform: [{ scale: 1.08 }]
+    backgroundColor: 'rgba(45, 212, 191, 0.22)',
+    transform: [{ scale: 1.1 }]
   },
   buttonBody: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#064E3B',
-    borderWidth: 2,
-    borderColor: '#34D399',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#5EEAD4'
   },
   activeDot: {
     position: 'absolute',
-    bottom: 3,
-    right: 3,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    bottom: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: '#10B981',
     borderWidth: 1.5,
     borderColor: '#FFFFFF'

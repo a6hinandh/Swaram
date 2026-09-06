@@ -154,6 +154,18 @@ def seed_database():
             "created_at": "2026-01-10T08:00:00Z"
         },
         {
+            "person_id": "p-vijayan-01",
+            "household_id": "h-lakshmi-001",
+            "name": "Vijayan K.",
+            "age": 35,
+            "gender": "male",
+            "relationship": "husband",
+            "life_stage": "adult",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": [],
+            "created_at": "2026-01-10T08:00:00Z"
+        },
+        {
             "person_id": "p-suresh-01",
             "household_id": "h-suresh-002",
             "name": "Suresh Kumar",
@@ -164,6 +176,78 @@ def seed_database():
             "pregnancy_status": "not_pregnant",
             "chronic_conditions": ["Hypertension"],
             "created_at": "2026-02-15T09:00:00Z"
+        },
+        {
+            "person_id": "p-sunitha-02",
+            "household_id": "h-suresh-002",
+            "name": "Sunitha S.",
+            "age": 48,
+            "gender": "female",
+            "relationship": "wife",
+            "life_stage": "adult",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": [],
+            "created_at": "2026-02-15T09:00:00Z"
+        },
+        {
+            "person_id": "p-akhil-03",
+            "household_id": "h-suresh-002",
+            "name": "Akhil Suresh",
+            "age": 22,
+            "gender": "male",
+            "relationship": "son",
+            "life_stage": "adult",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": [],
+            "created_at": "2026-02-15T09:00:00Z"
+        },
+        {
+            "person_id": "p-anitha-01",
+            "household_id": "h-anitha-003",
+            "name": "Anitha Kumari",
+            "age": 44,
+            "gender": "female",
+            "relationship": "head",
+            "life_stage": "adult",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": [],
+            "created_at": "2026-03-01T08:00:00Z"
+        },
+        {
+            "person_id": "p-mohan-02",
+            "household_id": "h-anitha-003",
+            "name": "Mohanan P.",
+            "age": 47,
+            "gender": "male",
+            "relationship": "husband",
+            "life_stage": "adult",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": ["Hypertension"],
+            "created_at": "2026-03-01T08:00:00Z"
+        },
+        {
+            "person_id": "p-meera-03",
+            "household_id": "h-anitha-003",
+            "name": "Meera M.",
+            "age": 16,
+            "gender": "female",
+            "relationship": "daughter",
+            "life_stage": "adolescent",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": ["Anemia"],
+            "created_at": "2026-03-01T08:00:00Z"
+        },
+        {
+            "person_id": "p-karthik-04",
+            "household_id": "h-anitha-003",
+            "name": "Karthik M.",
+            "age": 12,
+            "gender": "male",
+            "relationship": "son",
+            "life_stage": "child",
+            "pregnancy_status": "not_pregnant",
+            "chronic_conditions": [],
+            "created_at": "2026-03-01T08:00:00Z"
         }
     ]
     persons_col.insert_many(persons)

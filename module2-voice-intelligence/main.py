@@ -69,7 +69,7 @@ def process_voice_visit(request: ProcessVoiceRequest):
     Core pipeline: Malayalam Audio -> ASR -> Gemini Structured Clinical Extraction -> MongoDB Encounter Document
     """
     print(f"\n=======================================================")
-    print(f"🎙️ [Module 2 API] Incoming Voice Process Request:")
+    print(f"[VOICE] [Module 2 API] Incoming Voice Process Request:")
     print(f"   • Transcript provided: {bool(request.transcript)} ('{request.transcript}')")
     print(f"   • Audio URI provided: {bool(request.audio_uri)}")
     print(f"   • Household ID: {request.household_id}, Person ID: {request.person_id}")
@@ -81,7 +81,7 @@ def process_voice_visit(request: ProcessVoiceRequest):
     else:
         transcript, confidence = asr_service.transcribe(request.audio_uri)
 
-    print(f"📝 [Module 2 API] Active Transcript for Extraction: '{transcript}'")
+    print(f"[TRANSCRIPT] [Module 2 API] Active Transcript for Extraction: '{transcript}'")
 
     # 2. Gemini Clinical Encounter Extraction (Matching MongoDB Production Schema)
     encounter = gemini_extractor_service.extract_clinical_encounter(
@@ -104,7 +104,7 @@ def process_voice_visit(request: ProcessVoiceRequest):
     )
     encounter["missing_field_prompts"] = missing_prompts
 
-    print(f"✅ [Module 2 API] Returning Extracted Encounter Document with Person: {encounter.get('person')}")
+    print(f"[OK] [Module 2 API] Returning Extracted Encounter Document with Person: {encounter.get('person')}")
     print(f"=======================================================\n")
     return encounter
 

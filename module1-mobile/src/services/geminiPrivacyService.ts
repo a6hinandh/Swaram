@@ -375,7 +375,7 @@ export async function refineWithPrivacyPreservingGemini(
       record: localRecord,
       sanitizedPromptSent: sanitizedText,
       wasGeminiUsed: false,
-      message: '⚠️ Gemini API Key not set. Tap 🔑 AI Key above to enter your key or set EXPO_PUBLIC_GEMINI_API_KEY in .env. (Using Local Extractor)',
+      message: 'Gemini API Key not set. Tap AI Key above to enter your key or set EXPO_PUBLIC_GEMINI_API_KEY in .env. (Using Local Extractor)',
     };
   }
 
@@ -547,7 +547,7 @@ Only return valid JSON. Do not include markdown ticks or explanation.`;
         record: localRecord,
         sanitizedPromptSent: sanitizedText,
         wasGeminiUsed: false,
-        message: '⚠️ Gemini API could not generate structured schema. (Used Enhanced Local Extractor)',
+        message: 'Gemini API could not generate structured schema. (Used Enhanced Local Extractor)',
       };
     } catch (err: any) {
     console.warn('[Gemini Privacy Proxy] Cloud request error, falling back to local extractor:', err);
@@ -555,7 +555,7 @@ Only return valid JSON. Do not include markdown ticks or explanation.`;
       record: localRecord,
       sanitizedPromptSent: sanitizedText,
       wasGeminiUsed: false,
-      message: `⚠️ Cloud request error: ${err.message || 'Network issue'}. (Used Local Extractor)`,
+      message: `Cloud request error: ${err.message || 'Network issue'}. (Used Local Extractor)`,
     };
   }
 

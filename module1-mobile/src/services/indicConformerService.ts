@@ -115,7 +115,7 @@ export async function transcribeWithIndicConformer(
             const executionTimeMs = Date.now() - startTime;
 
             console.log('\n======================================================');
-            console.log('🗣️ HUGGING FACE INFERENCE TRANSCRIPTION (MALAYALAM):');
+            console.log('[HF Inference] TRANSCRIPTION (MALAYALAM):');
             console.log(extractedText);
             console.log('======================================================\n');
 
@@ -186,7 +186,7 @@ export async function transcribeWithIndicConformer(
         const cleaned = enforceEnglishOrMalayalam(extracted, 'ml');
         if (cleaned) {
           console.log('\n======================================================');
-          console.log('🗣️ AI4BHARAT INDICCONFORMER TRANSCRIPTION (MALAYALAM):');
+          console.log('[IndicConformer] TRANSCRIPTION (MALAYALAM):');
           console.log(cleaned);
           console.log('======================================================\n');
 

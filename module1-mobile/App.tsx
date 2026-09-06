@@ -5,18 +5,26 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   ActivityIndicator,
   TextInput,
-  Modal
+  Modal,
+  Image,
+  Share,
+  Platform
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient, getActiveHost, setActiveHost } from './src/api/apiClient';
 import {
   VisitDraft,
   ConfirmedVisit,
-  MissingFieldPrompt
+  MissingFieldPrompt,
+  HouseholdSummary,
+  HouseholdMember
 } from './src/types';
+import { LoginScreen } from './src/screens/LoginScreen';
+import { HouseholdPersonSelector } from './src/components/HouseholdPersonSelector';
+import { loadSavedSession, clearSession, AshaWorkerProfile } from './src/services/authService';
 import { audioRecorder } from './src/services/audioRecorder';
 import {
   transcribeWithIndicConformer,
@@ -31,7 +39,8 @@ import {
   saveStructuredRecord,
   getAllStructuredRecords,
   deleteStructuredRecord,
-  exportAllRecordsJson
+  exportAllRecordsFormattedText,
+  formatStructuredRecordToReport
 } from './src/services/structuredStorageService';
 import {
   refineTranscriptSentencesWithGemini,
@@ -43,15 +52,16 @@ import {
 import {
   BottomTabBar,
   AppTab,
+  AppIcon,
   MentalHealthScreen,
   EnvironmentalRiskScreen,
   NcdLifestyleScreen,
   VitalsBaselineScreen
 } from './src/modules';
-import { FloatingRobotButton } from './src/components/FloatingRobotButton';
+import { AshaProfileScreen, ALL_ALUVA_WARDS } from './src/screens/AshaProfileScreen';
 import { AshaChatbotModal } from './src/components/AshaChatbotModal';
 
-export default function App() {
+function MainApp() {
   // State for connectivity & Diagnostic Ping
   const [serverIp, setServerIp] = useState<string>(getActiveHost());
   const [showIpConfig, setShowIpConfig] = useState<boolean>(false);
@@ -72,12 +82,16 @@ export default function App() {
   const [lastActionMessage, setLastActionMessage] = useState<string>('Ready for field visits');
   const timerIntervalRef = React.useRef<any>(null);
 
-  // Structured Clinical Record Extraction & Offline Storage State
+  // Structured Clinical Record Extraction & Database Storage State
   const [structuredRecord, setStructuredRecord] = useState<StructuredClinicalRecord | null>(null);
   const [savedRecords, setSavedRecords] = useState<StructuredClinicalRecord[]>([]);
-  const [showJsonModal, setShowJsonModal] = useState<boolean>(false);
-  const [activeJsonToView, setActiveJsonToView] = useState<string>('');
-  const [jsonModalTitle, setJsonModalTitle] = useState<string>('Structured Clinical Record JSON');
+  const [selectedRecordToView, setSelectedRecordToView] = useState<StructuredClinicalRecord | null>(null);
+  const [showStructuredViewModal, setShowStructuredViewModal] = useState<boolean>(false);
+  const [showExportReportModal, setShowExportReportModal] = useState<boolean>(false);
+  const [exportReportText, setExportReportText] = useState<string>('');
+  const [activeWard, setActiveWard] = useState<string>('വാർഡ് 4, ആലുവ (Ward 4, Aluva)');
+  const [showWardModal, setShowWardModal] = useState<boolean>(false);
+  const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [saveFeedbackMsg, setSaveFeedbackMsg] = useState<string | null>(null);
   const [isSavingRecord, setIsSavingRecord] = useState<boolean>(false);
   const [isGeminiRefining, setIsGeminiRefining] = useState<boolean>(false);
@@ -109,11 +123,107 @@ export default function App() {
     );
   };
 
+  // Authentication & Frontline Role State
+  const [currentUser, setCurrentUser] = useState<AshaWorkerProfile | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+
+  // Active Household & Citizen Context State (Numbered households & members)
+  const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
+  const [selectedHousehold, setSelectedHousehold] = useState<HouseholdSummary | null>(null);
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<HouseholdMember | null>(null);
+  const [isLoadingMembers, setIsLoadingMembers] = useState<boolean>(false);
+
   // Initial Load
   useEffect(() => {
-    runBasicCall();
-    refreshSavedRecords();
+    initAppSession();
   }, []);
+
+  const initAppSession = async () => {
+    setIsAuthLoading(true);
+    try {
+      const saved = await loadSavedSession();
+      if (saved.isLoggedIn && saved.user) {
+        setCurrentUser(saved.user);
+      }
+    } catch (e) {
+      console.warn('Session load error:', e);
+    }
+    await runBasicCall();
+    await loadHouseholdsData();
+    await refreshSavedRecords();
+    setIsAuthLoading(false);
+  };
+
+  const loadHouseholdsData = async () => {
+    try {
+      const res = await apiClient.getHouseholds();
+      if (res.data && res.data.length > 0) {
+        setHouseholds(res.data);
+        const firstHh = res.data[0];
+        setSelectedHousehold(firstHh);
+        await loadMembersForHousehold(firstHh.id);
+      }
+    } catch (e) {
+      console.warn('Failed to load households:', e);
+    }
+  };
+
+  const loadMembersForHousehold = async (hhId: string) => {
+    setIsLoadingMembers(true);
+    try {
+      const res = await apiClient.getHouseholdMembers(hhId);
+      if (res.data && res.data.length > 0) {
+        setHouseholdMembers(res.data);
+        setSelectedPerson(res.data[0]);
+      } else {
+        setHouseholdMembers([]);
+        setSelectedPerson(null);
+      }
+    } catch (e) {
+      console.warn('Failed to load members:', e);
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  const handleSelectHousehold = async (hh: HouseholdSummary) => {
+    setSelectedHousehold(hh);
+    await loadMembersForHousehold(hh.id);
+    setLastActionMessage(`Switched to Household [${hh.external_id || hh.id}]: ${hh.head_of_household}`);
+  };
+
+  const handleSelectPerson = (person: HouseholdMember) => {
+    setSelectedPerson(person);
+    setLastActionMessage(`Active beneficiary: ${person.name} (${person.age || '?'}y)`);
+  };
+
+  const handleAddNewMember = async (memberData: Partial<HouseholdMember>) => {
+    if (!selectedHousehold) return;
+    const res = await apiClient.addHouseholdMember(selectedHousehold.id, memberData);
+    if (res.data) {
+      await loadMembersForHousehold(selectedHousehold.id);
+      setSelectedPerson(res.data);
+      setLastActionMessage(`✓ Added ${res.data.name} to ${selectedHousehold.head_of_household}'s household`);
+    }
+  };
+
+  const handleAddNewHousehold = async (hhData: Partial<HouseholdSummary>) => {
+    const res = await apiClient.createHousehold(hhData);
+    if (res.data) {
+      const updated = await apiClient.getHouseholds();
+      setHouseholds(updated.data);
+      setSelectedHousehold(res.data);
+      await loadMembersForHousehold(res.data.id);
+      setLastActionMessage(`✓ Registered new household [${res.data.external_id}]`);
+    }
+  };
+
+  const handleLogout = async () => {
+    await clearSession();
+    setCurrentUser(null);
+    setLastActionMessage('Logged out from ASHA portal.');
+  };
 
   const refreshSavedRecords = async () => {
     try {
@@ -152,7 +262,7 @@ export default function App() {
         await audioRecorder.startRecording();
         setIsRecording(true);
         setRecordingDuration(0);
-        setLastActionMessage('🎙️ Recording live Malayalam speech... Tap button when finished.');
+        setLastActionMessage('ശബ്ദം രേഖപ്പെടുത്തുന്നു... പൂർത്തിയാകുമ്പോൾ ബട്ടൺ അമർത്തുക (Recording live speech...)');
 
         timerIntervalRef.current = setInterval(() => {
           setRecordingDuration((sec) => sec + 1);
@@ -167,7 +277,7 @@ export default function App() {
       }
       setIsRecording(false);
       setIsProcessingVoice(true);
-      setLastActionMessage('Transcribing Malayalam audio with Sarvam AI (Saaras v4)...');
+      setLastActionMessage('ശബ്ദരേഖ തയ്യാറാക്കുന്നു (Transcribing Malayalam audio)...');
 
       try {
         const audio = await audioRecorder.stopRecording();
@@ -176,21 +286,20 @@ export default function App() {
         const conformerResult = await transcribeWithIndicConformer(audio, 'ml');
 
         console.log('\n======================================================');
-        console.log('🗣️ SARVAM AI RAW TRANSCRIPTION (MALAYALAM):');
+        console.log('SARVAM AI RAW TRANSCRIPTION (MALAYALAM):');
         console.log(conformerResult.transcript);
         console.log('======================================================\n');
 
         let activeTranscript = conformerResult.transcript;
 
-        // 2. Sentence-by-Sentence Gemini Contextual Refinement
-        // Send every sentence to Gemini with context to fix acoustic/phonetic errors into common Malayalam
-        setLastActionMessage('✨ Gemini refining sentence-by-sentence in Malayalam with context...');
+        // 2. Sentence-by-Sentence Gemini Contextual Refinement (in background)
+        setLastActionMessage('ശബ്ദരേഖ വിശകലനം ചെയ്യുന്നു (Analyzing speech with context)...');
         try {
           const sentenceResult = await refineTranscriptSentencesWithGemini(
             conformerResult.transcript,
             geminiApiKeyInput,
             (done, total) => {
-              setLastActionMessage(`✨ Gemini refining sentence ${done} of ${total} in Malayalam...`);
+              setLastActionMessage(`വിവരങ്ങൾ പരിശോധിക്കുന്നു (${done}/${total})...`);
             }
           );
           if (sentenceResult.correctedTranscript) {
@@ -224,7 +333,7 @@ export default function App() {
         // 4. Process clinical visit draft
         const draftResult = await apiClient.processVoiceVisit(activeTranscript);
         setVisitDraft(draftResult.data);
-        setLastActionMessage(`✓ Transcription, Sentence Refinement & Structured Extraction complete!`);
+        setLastActionMessage('വിവരങ്ങൾ വിജയകരമായി രേഖപ്പെടുത്തി (Record ready for review).');
       } catch (err: any) {
         console.error('IndicConformer error:', err);
         setLastActionMessage(`ASR Error: ${err.message}`);
@@ -238,14 +347,14 @@ export default function App() {
   const handleRefineWithGemini = async () => {
     if (!indicConformerTranscript) return;
     setIsGeminiRefining(true);
-    setGeminiStatusNote('✨ Sending sentences to Gemini for contextual Malayalam correction...');
+    setGeminiStatusNote('Sending sentences to Gemini for contextual Malayalam correction...');
     try {
       // 1. Refine sentences with Gemini
       const sentenceResult = await refineTranscriptSentencesWithGemini(
         indicConformerTranscript,
         geminiApiKeyInput,
         (done, total) => {
-          setGeminiStatusNote(`✨ Refining sentence ${done} of ${total} with Gemini...`);
+          setGeminiStatusNote(`Refining sentence ${done} of ${total} with Gemini...`);
         }
       );
       const refinedText = sentenceResult.correctedTranscript || indicConformerTranscript;
@@ -314,38 +423,52 @@ export default function App() {
     setLastActionMessage('Missing information satisfied conversationally! Ready for review.');
   };
 
-  // Structured Storage Actions
+  // Structured Clinical Record Actions (Central Database + Offline Resilience)
   const handleSaveCurrentRecord = async () => {
     if (!structuredRecord) return;
     setIsSavingRecord(true);
-    setSaveFeedbackMsg('Saving record to device offline storage...');
+    setSaveFeedbackMsg('കേന്ദ്ര ഡാറ്റാബേസിലേക്ക് സൂക്ഷിക്കുന്നു (Saving to database)...');
     try {
-      const res = await saveStructuredRecord(structuredRecord);
-      if (res.success) {
-        setSaveFeedbackMsg(`✓ Saved offline! (ID: ${structuredRecord.visit.visit_id})`);
-        await refreshSavedRecords();
-      } else {
-        setSaveFeedbackMsg('❌ Failed to save record.');
+      if (selectedHousehold) {
+        structuredRecord.visit.household_id = selectedHousehold.id;
       }
+      if (currentUser) {
+        structuredRecord.visit.worker_id = currentUser.worker_id;
+      }
+      if (selectedPerson) {
+        structuredRecord.person.person_id = selectedPerson.person_id;
+        structuredRecord.person.name = selectedPerson.name;
+        if (selectedPerson.age !== undefined) structuredRecord.person.age = selectedPerson.age;
+      }
+
+      // 1. Save to local storage for offline resilience
+      await saveStructuredRecord(structuredRecord);
+
+      // 2. Post to central MongoDB Atlas database
+      const dbRes = await apiClient.saveStructuredRecordToDatabase(structuredRecord);
+      if (dbRes.data && dbRes.data.storage === 'mongodb') {
+        setSaveFeedbackMsg(`✓ കേന്ദ്ര ഡാറ്റാബേസിൽ രേഖപ്പെടുത്തി! (ID: ${structuredRecord.visit.visit_id})`);
+      } else {
+        setSaveFeedbackMsg(`✓ രേഖപ്പെടുത്തി (ഓഫ്‌ലൈൻ കാഷെയിൽ സൂക്ഷിച്ചു - ID: ${structuredRecord.visit.visit_id})`);
+      }
+      await refreshSavedRecords();
     } catch (err: any) {
-      setSaveFeedbackMsg(`Error saving: ${err.message}`);
+      setSaveFeedbackMsg(`സേവ് ചെയ്യുന്നതിൽ തടസ്സം: ${err.message || err}`);
     } finally {
       setIsSavingRecord(false);
       setTimeout(() => setSaveFeedbackMsg(null), 4000);
     }
   };
 
-  const handleOpenJsonModal = (record: StructuredClinicalRecord, title?: string) => {
-    setJsonModalTitle(title || `Visit JSON: ${record.visit.visit_id}`);
-    setActiveJsonToView(JSON.stringify(record, null, 2));
-    setShowJsonModal(true);
+  const handleOpenStructuredRecordModal = (record: StructuredClinicalRecord) => {
+    setSelectedRecordToView(record);
+    setShowStructuredViewModal(true);
   };
 
   const handleOpenBatchExportModal = async () => {
-    const exported = await exportAllRecordsJson();
-    setJsonModalTitle(`All Stored Records Export (${savedRecords.length} visits)`);
-    setActiveJsonToView(exported);
-    setShowJsonModal(true);
+    const exportedText = await exportAllRecordsFormattedText();
+    setExportReportText(exportedText);
+    setShowExportReportModal(true);
   };
 
   const handleDeleteRecord = async (visitId: string) => {
@@ -355,9 +478,19 @@ export default function App() {
     setTimeout(() => setSaveFeedbackMsg(null), 3000);
   };
 
-  // Human Confirmation Gate
+  const handleCancelEntry = () => {
+    setVisitDraft(null);
+    setStructuredRecord(null);
+    setIndicConformerTranscript(null);
+    setSentenceDetails([]);
+    setLastActionMessage('എൻട്രി റദ്ദാക്കി (Entry reset).');
+  };
+
+  // Human Confirmation & Direct Database Sync Gate
   const handleConfirmVisit = async () => {
     if (!visitDraft && !structuredRecord) return;
+    setIsSavingRecord(true);
+    setSaveFeedbackMsg('വിവരങ്ങൾ സമർപ്പിക്കുന്നു (Submitting survey)...');
 
     let personUpdates = visitDraft?.person_updates || [];
     let sysBp: number | undefined;
@@ -373,12 +506,17 @@ export default function App() {
       }
     }
 
+    const targetHhId = selectedHousehold?.id || 'h-lakshmi-001';
+    const targetWorkerId = currentUser?.worker_id || 'w-asha-001';
+    const targetPersonId = selectedPerson?.person_id || `p-${Date.now()}`;
+    const targetPersonName = selectedPerson?.name || 'Beneficiary';
+
     if (personUpdates.length === 0 && structuredRecord) {
       personUpdates = [{
-        person_id: structuredRecord.person.person_id || `p-${Date.now()}`,
-        name: structuredRecord.person.name || '',
-        age: structuredRecord.person.age || undefined,
-        gender: structuredRecord.person.sex,
+        person_id: targetPersonId,
+        name: targetPersonName,
+        age: selectedPerson?.age !== undefined ? selectedPerson.age : (structuredRecord.person.age || undefined),
+        gender: selectedPerson?.gender || structuredRecord.person.sex,
         vitals: {
           systolic_bp: sysBp,
           diastolic_bp: diaBp,
@@ -391,7 +529,12 @@ export default function App() {
         services_provided: ['Vitals check']
       }];
     } else if (personUpdates.length > 0) {
-      if (structuredRecord?.person?.name && (!personUpdates[0].name || personUpdates[0].name === 'Beneficiary' || personUpdates[0].name === 'Patient')) {
+      if (selectedPerson) {
+        personUpdates[0].person_id = selectedPerson.person_id;
+        personUpdates[0].name = selectedPerson.name;
+        if (selectedPerson.age !== undefined) personUpdates[0].age = selectedPerson.age;
+        if (selectedPerson.gender) personUpdates[0].gender = selectedPerson.gender;
+      } else if (structuredRecord?.person?.name && (!personUpdates[0].name || personUpdates[0].name === 'Beneficiary' || personUpdates[0].name === 'Patient')) {
         personUpdates[0].name = structuredRecord.person.name;
       }
       if (sysBp && (!personUpdates[0].vitals || !personUpdates[0].vitals.systolic_bp)) {
@@ -406,8 +549,8 @@ export default function App() {
     const visitId = visitDraft?.visit_id || structuredRecord?.visit?.visit_id || `visit-${Date.now()}`;
     const confirmed: ConfirmedVisit = {
       visit_id: visitId,
-      household_id: 'community-visit',
-      worker_id: visitDraft?.worker_id || 'w-asha-001',
+      household_id: targetHhId,
+      worker_id: targetWorkerId,
       timestamp: new Date().toISOString(),
       person_updates: personUpdates,
       survey_fields: visitDraft?.survey_fields || [],
@@ -416,18 +559,60 @@ export default function App() {
       sync_status: isBackendConnected ? 'synced' : 'pending'
     };
 
-    if (structuredRecord) {
-      await saveStructuredRecord(structuredRecord);
-      await refreshSavedRecords();
-    }
+    try {
+      if (structuredRecord) {
+        structuredRecord.visit.household_id = targetHhId;
+        structuredRecord.visit.worker_id = targetWorkerId;
+        if (selectedPerson) {
+          structuredRecord.person.person_id = selectedPerson.person_id;
+          structuredRecord.person.name = selectedPerson.name;
+          if (selectedPerson.age !== undefined) structuredRecord.person.age = selectedPerson.age;
+        }
+        await saveStructuredRecord(structuredRecord);
+        await apiClient.saveStructuredRecordToDatabase(structuredRecord);
+        await refreshSavedRecords();
+      }
 
-    const submitResult = await apiClient.submitConfirmedVisit(confirmed);
-    setVisitDraft(null);
-    if (submitResult.isMockFallback) {
-      setSyncQueueCount((prev) => prev + 1);
+      const submitResult = await apiClient.submitConfirmedVisit(confirmed);
+      setVisitDraft(null);
+      setStructuredRecord(null);
+      if (submitResult.isMockFallback) {
+        setSyncQueueCount((prev) => prev + 1);
+      }
+      setSaveFeedbackMsg('വിവരങ്ങൾ വിജയകരമായി സമർപ്പിച്ചു (Survey Filed & Synced)!');
+      setLastActionMessage(`വിവരങ്ങൾ സ്ഥിരീകരിച്ചു: ${submitResult.message}`);
+    } catch (err: any) {
+      setSaveFeedbackMsg(`സമർപ്പിക്കുന്നതിൽ തടസ്സം: ${err.message || err}`);
+    } finally {
+      setIsSavingRecord(false);
+      setTimeout(() => setSaveFeedbackMsg(null), 4000);
     }
-    setLastActionMessage(`Survey Confirmed & Filed! ${submitResult.message}`);
   };
+
+  // Auth Loading Gate
+  if (isAuthLoading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#064E3B', justifyContent: 'center', alignItems: 'center' }}>
+        <StatusBar barStyle="light-content" backgroundColor="#064E3B" />
+        <ActivityIndicator size="large" color="#34D399" />
+        <Text style={{ color: '#D1FAE5', marginTop: 14, fontSize: 15, fontWeight: '700' }}>
+          സ്വരം സിസ്റ്റം ആരംഭിക്കുന്നു... (Starting Swaram...)
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Authentication Gate: Render LoginScreen if not logged in
+  if (!currentUser) {
+    return (
+      <LoginScreen
+        onLoginSuccess={(profile) => {
+          setCurrentUser(profile);
+          setLastActionMessage(`Logged in as ${profile.name} (${profile.ward})`);
+        }}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -435,212 +620,129 @@ export default function App() {
 
       {/* App Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>സ്വരം • SWARAM</Text>
-          <Text style={styles.headerSubtitle}>
-            {activeTab === 'core' && 'Next-Gen ASHA Worker Platform\n(വാർഡ് 4, ആലുവ)'}
-            {activeTab === 'mental' && 'Mental Health Voice Screening Protocol'}
-            {activeTab === 'climate' && 'Environmental & Climate Risk Monitoring'}
-            {activeTab === 'lifestyle' && 'Community Based Assessment Checklist'}
-            {activeTab === 'vitals' && 'Longitudinal Vitals Baseline & Delta Detector'}
-          </Text>
-          {activeTab === 'core' && (
-            <View style={styles.conceptPill}>
-              <Text style={styles.conceptPillText}>Conversational Survey & Care Intelligence</Text>
-            </View>
-          )}
+        <View style={styles.headerBrandRow}>
+          <View style={styles.logoCircle}>
+            <Image
+              source={require('./assets/swaram.png')}
+              style={styles.headerLogoImage}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={styles.headerTitle}>സ്വരം (SWARAM)</Text>
         </View>
+
+        <View style={styles.headerRightActions}>
+          {/* AI Chatbot / AI Helper Button next to 3-Dot More Button */}
+          <TouchableOpacity
+            style={styles.headerAiButton}
+            onPress={() => setIsChatbotOpen(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="സ്വരം AI സഹായി"
+          >
+            <AppIcon name="bot" size={20} color="#FFFFFF" />
+            <View style={styles.headerAiDot} />
+          </TouchableOpacity>
+
+          {/* 3-Dot More Menu Button */}
+          <TouchableOpacity
+            style={styles.moreMenuButton}
+            onPress={() => setShowMoreMenu(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.moreMenuIcon}>⋮</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 3-Dot More Menu Dropdown Modal */}
+      <Modal
+        visible={showMoreMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMoreMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowMoreMenu(false)}
+        >
+          <View style={styles.dropdownMenu}>
+            <TouchableOpacity
+              style={styles.dropdownMenuItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                setActiveTab('profile');
+              }}
+              activeOpacity={0.7}
+            >
+              <AppIcon name="profile" size={18} color="#047857" />
+              <Text style={styles.dropdownMenuText}>പ്രൊഫൈൽ (Profile)</Text>
+            </TouchableOpacity>
+
+            <View style={styles.dropdownMenuDivider} />
+
+            <TouchableOpacity
+              style={styles.dropdownMenuItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                handleLogout();
+              }}
+              activeOpacity={0.7}
+            >
+              <AppIcon name="logout" size={18} color="#EF4444" />
+              <Text style={[styles.dropdownMenuText, styles.dropdownMenuTextDanger]}>
+                ലോഗ് ഔട്ട് (Logout)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Sub-Header: Ward for Aluva Section */}
+      <View style={styles.subHeader}>
+        <View style={styles.subHeaderLeft}>
+          <View style={styles.subHeaderPinCircle}>
+            <AppIcon name="location" size={18} color="#34D399" />
+          </View>
+          <View style={styles.subHeaderTextCol}>
+            <Text style={styles.subHeaderLabel}>ആരോഗ്യ വാർഡ്</Text>
+            <Text style={styles.subHeaderWardTitle} numberOfLines={1}>{activeWard}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.subHeaderChangeBtn}
+          onPress={() => setShowWardModal(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.subHeaderChangeText}>മാറ്റുക ▾</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Core Field Survey Tab View */}
       {activeTab === 'core' && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Network & Offline Status Banner */}
-        <View style={[styles.networkBanner, isBackendConnected ? styles.bannerOnline : styles.bannerOffline]}>
-          <View style={styles.bannerRow}>
-            <View style={[styles.statusDot, isBackendConnected ? styles.dotGreen : styles.dotAmber]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bannerText}>
-                System Mode: <Text style={{ fontWeight: 'bold' }}>{backendStatus}</Text>
-              </Text>
-              <Text style={styles.ipSubtitleText}>
-                Target: http://{serverIp}:8000
-              </Text>
-            </View>
-          </View>
-          <View style={styles.bannerActions}>
-            <TouchableOpacity
-              style={styles.ipConfigToggleBtn}
-              onPress={() => setShowIpConfig(!showIpConfig)}
-            >
-              <Text style={styles.ipConfigToggleText}>IP Config</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ipConfigToggleBtn, { backgroundColor: '#4C1D95' }]}
-              onPress={() => setShowApiKeyConfig(!showApiKeyConfig)}
-            >
-              <Text style={[styles.ipConfigToggleText, { color: '#FFFFFF' }]}>AI Key</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.testCallButton}
-              onPress={runBasicCall}
-              disabled={isCallingApi}
-            >
-              {isCallingApi ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.testCallButtonText}>Ping</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* IP Configuration Bar */}
-        {showIpConfig && (
-          <View style={styles.ipConfigCard}>
-            <Text style={styles.ipConfigLabel}>Configure Development Machine Host IP:</Text>
-            <View style={styles.ipInputRow}>
-              <TextInput
-                style={styles.ipInput}
-                value={serverIp}
-                onChangeText={setServerIp}
-                placeholder="e.g. 192.168.1.5"
-                keyboardType="numeric"
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                style={styles.ipSaveButton}
-                onPress={() => {
-                  setActiveHost(serverIp);
-                  setShowIpConfig(false);
-                  runBasicCall();
-                }}
-              >
-                <Text style={styles.ipSaveButtonText}>Save & Test</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* AI Services API Key Configuration Card */}
-        {showApiKeyConfig && (
-          <View style={[styles.ipConfigCard, { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' }]}>
-            {/* Sarvam AI ASR Section */}
-            <Text style={[styles.ipConfigLabel, { color: '#047857', fontWeight: 'bold' }]}>
-              🎙️ Sarvam AI Voice-to-Text API Key (Malayalam Saaras v4):
-            </Text>
-            <Text style={{ fontSize: 11, color: '#065F46', marginBottom: 6 }}>
-              Directly transcribes spoken Malayalam audio via Sarvam AI Saaras v4 foundation model.
-            </Text>
-            <View style={styles.ipInputRow}>
-              <TextInput
-                style={[styles.ipInput, { borderColor: '#A7F3D0', flex: 1 }]}
-                value={sarvamApiKeyInput}
-                onChangeText={setSarvamApiKeyInput}
-                placeholder="Paste sk_... key here"
-                placeholderTextColor="#6EE7B7"
-                secureTextEntry={!showSarvamKeyPlaintext}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                style={[styles.ipSaveButton, { backgroundColor: '#059669' }]}
-                onPress={handleSaveSarvamKey}
-              >
-                <Text style={styles.ipSaveButtonText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, marginBottom: 12 }}>
-              <TouchableOpacity onPress={() => setShowSarvamKeyPlaintext(!showSarvamKeyPlaintext)}>
-                <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
-                  {showSarvamKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
-                </Text>
-              </TouchableOpacity>
-              {sarvamApiKeyInput && sarvamApiKeyInput.trim() ? (
-                <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
-                  ✓ Sarvam Active ({sarvamApiKeyInput.slice(0, 6)}...{sarvamApiKeyInput.slice(-4)})
-                </Text>
-              ) : (
-                <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
-                  ⚠️ No key set (Fallback mode)
-                </Text>
-              )}
-            </View>
-
-            {/* Gemini Intelligence Section */}
-            <View style={{ borderTopWidth: 1, borderTopColor: '#DDD6FE', paddingTop: 10 }}>
-              <Text style={[styles.ipConfigLabel, { color: '#5B21B6', fontWeight: 'bold' }]}>
-                🔑 Google Gemini API Key (Zero-PII Engine):
-              </Text>
-              <Text style={{ fontSize: 11, color: '#6D28D9', marginBottom: 6 }}>
-                Contextual refinement & structured medical extraction. PII is sanitized on-device.
-              </Text>
-              <View style={styles.ipInputRow}>
-                <TextInput
-                  style={[styles.ipInput, { borderColor: '#C4B5FD', flex: 1 }]}
-                  value={geminiApiKeyInput}
-                  onChangeText={setGeminiApiKeyInput}
-                  placeholder="Paste AIzaSy... key here"
-                  placeholderTextColor="#A78BFA"
-                  secureTextEntry={!showKeyPlaintext}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  style={[styles.ipSaveButton, { backgroundColor: '#7C3AED' }]}
-                  onPress={handleSaveGeminiKey}
-                >
-                  <Text style={styles.ipSaveButtonText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                <TouchableOpacity onPress={() => setShowKeyPlaintext(!showKeyPlaintext)}>
-                  <Text style={{ fontSize: 11, color: '#7C3AED', fontWeight: '600' }}>
-                    {showKeyPlaintext ? '🙈 Hide Key' : '👁️ Show Key'}
-                  </Text>
-                </TouchableOpacity>
-                {geminiApiKeyInput && geminiApiKeyInput.trim() ? (
-                  <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600' }}>
-                    ✓ Key Active ({geminiApiKeyInput.slice(0, 6)}...{geminiApiKeyInput.slice(-4)})
-                  </Text>
-                ) : (
-                  <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
-                    ⚠️ No key set (Local Extractor)
-                  </Text>
-                )}
-              </View>
-            </View>
-          </View>
-        )}
-
-
-        {/* CBAC / CABC Survey Feature Launcher */}
-        <TouchableOpacity
-          style={styles.cbacLauncherCard}
-          onPress={() => setActiveTab('lifestyle')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.cbacLauncherLeft}>
-            <View style={styles.cbacIconBadge}>
-              <Text style={styles.cbacIconEmoji}>📋</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.cbacHeaderRow}>
-                <Text style={styles.cbacLauncherTitle}>CBAC / CABC സർവേ</Text>
-              </View>
-              <Text style={styles.cbacLauncherSubtitle}>
-                കമ്മ്യൂണിറ്റി ബേസ്ഡ് അസസ്സ്മെന്റ് ചെക്ക്‌ലിസ്റ്റ് (NCD & Cancer Early Screening)
-              </Text>
-              <Text style={styles.cbacActionPrompt}>
-                സർവേ ആരംഭിക്കുക (Open CBAC Survey) →
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* Numbered Household & Citizen Selector Card (Context Anchor) */}
+        <HouseholdPersonSelector
+          households={households}
+          selectedHousehold={selectedHousehold}
+          onSelectHousehold={handleSelectHousehold}
+          members={householdMembers}
+          selectedPerson={selectedPerson}
+          onSelectPerson={handleSelectPerson}
+          isLoadingMembers={isLoadingMembers}
+          onAddNewMember={handleAddNewMember}
+          onAddNewHousehold={handleAddNewHousehold}
+        />
 
         {/* Conversational Survey Capture Section */}
         <View style={styles.voiceSection}>
-          <Text style={styles.sectionHeading}>സംഭാഷണ സർവേ (Conversational Survey Entry)</Text>
+          <Text style={styles.sectionHeading}>സംഭാഷണ സർവേ</Text>
           <Text style={styles.instructionText}>
-            Speak natural Malayalam: Describe vitals, symptoms, medicine, and next visit date.
+            സ്വാഭാവിക മലയാളത്തിൽ സംസാരിക്കുക: വൈറ്റൽസ്, ലക്ഷണങ്ങൾ, മരുന്നുകൾ, അടുത്ത സന്ദർശന തീയതി എന്നിവ പറയുക.
           </Text>
 
           {/* Live Recording Button */}
@@ -655,41 +757,51 @@ export default function App() {
             {isProcessingVoice ? (
               <View style={styles.buttonContent}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.recordButtonText}>AI4Bharat IndicConformer പ്രോസസ്സ് ചെയ്യുന്നു...</Text>
+                <Text style={styles.recordButtonText}>ശബ്ദം പ്രോസസ്സ് ചെയ്യുന്നു...</Text>
               </View>
             ) : (
               <View style={styles.buttonContent}>
-                <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎙️'}</Text>
-                <Text style={styles.recordButtonText}>
-                  {isRecording
-                    ? `🔴 ${Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:${(recordingDuration % 60).toString().padStart(2, '0')} - നിർത്തുക\n(Stop & Transcribe)`
-                    : 'ശബ്ദം രേഖപ്പെടുത്തുക\n(Record Live Audio)'}
-                </Text>
+                {isRecording ? (
+                  <>
+                    <AppIcon name="stop" size={18} color="#FFFFFF" />
+                    <View style={styles.recPulseDot} />
+                    <Text style={styles.recordButtonText}>
+                      {Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:{(recordingDuration % 60).toString().padStart(2, '0')} - നിർത്തുക
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <AppIcon name="mic" size={20} color="#FFFFFF" />
+                    <Text style={styles.recordButtonText}>ശബ്ദം രേഖപ്പെടുത്തുക</Text>
+                  </>
+                )}
               </View>
             )}
           </TouchableOpacity>
 
-
-          {/* Dedicated AI4Bharat IndicConformer Transcription Output Display */}
+          {/* Dedicated Transcription Output Display */}
           {indicConformerTranscript && (
             <View style={styles.indicConformerCard}>
               <View style={styles.indicConformerHeader}>
-                <View style={styles.indicConformerBadge}>
-                  <Text style={styles.indicConformerBadgeText}>HUGGING FACE / INDICCONFORMER</Text>
-                </View>
+                <Text style={styles.transcriptCardTitle}>ശബ്ദരേഖ</Text>
                 <Text style={styles.indicConformerLang}>മലയാളം (Malayalam)</Text>
               </View>
 
               {/* Editable Transcript Area */}
               <View style={styles.editTranscriptBox}>
                 <View style={styles.editTranscriptHeader}>
-                  <Text style={styles.editTranscriptHint}>✏️ ശബ്ദരേഖ (Tap text to edit/correct words):</Text>
+                  <View style={styles.editTranscriptTitleRow}>
+                    <AppIcon name="edit" size={14} color="#34D399" />
+                    <Text style={styles.editTranscriptHint}>തിരുത്താൻ ടാപ്പ് ചെയ്യുക:</Text>
+                  </View>
                   <TouchableOpacity
                     style={styles.reanalyzeBtn}
                     onPress={() => handleReanalyzeTranscript(indicConformerTranscript)}
                     disabled={isProcessingVoice}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.reanalyzeBtnText}>🔄 Update</Text>
+                    <AppIcon name="refresh" size={12} color="#FFFFFF" />
+                    <Text style={styles.reanalyzeBtnText}>അപ്‌ഡേറ്റ്</Text>
                   </TouchableOpacity>
                 </View>
                 <TextInput
@@ -697,92 +809,9 @@ export default function App() {
                   multiline
                   value={indicConformerTranscript}
                   onChangeText={(newTxt) => setIndicConformerTranscript(newTxt)}
-                  placeholder="Type or correct transcription here..."
+                  placeholder="ശബ്ദരേഖ ഇവിടെ കാണാം..."
+                  placeholderTextColor="#6EE7B7"
                 />
-              </View>
-
-              {/* Sentence-by-Sentence Refinement Breakdown */}
-              {sentenceDetails.length > 0 && (
-                <View style={styles.sentenceBreakdownCard}>
-                  <TouchableOpacity
-                    style={styles.sentenceBreakdownHeader}
-                    onPress={() => setShowSentenceBreakdown(!showSentenceBreakdown)}
-                  >
-                    <View style={styles.sentenceTitleRow}>
-                      <Text style={styles.sentenceBreakdownTitle}>
-                        ✨ വാക്യാടിസ്ഥാനത്തിലുള്ള പരിശോധന ({sentenceDetails.length} Sentences Refined)
-                      </Text>
-                      <Text style={styles.sentenceBreakdownToggle}>
-                        {showSentenceBreakdown ? '▲ ചുരുക്കുക (Hide)' : '▼ കാണുക (View)'}
-                      </Text>
-                    </View>
-                    <Text style={styles.sentenceSubtext}>
-                      Gemini addressed Indic ASR acoustic errors with full sentence context
-                    </Text>
-                  </TouchableOpacity>
-
-                  {showSentenceBreakdown && (
-                    <View style={styles.sentenceList}>
-                      {sentenceDetails.map((detail, idx) => (
-                        <View key={idx} style={styles.sentenceItem}>
-                          <View style={styles.sentenceBadge}>
-                            <Text style={styles.sentenceBadgeText}>#{idx + 1}</Text>
-                          </View>
-                          <View style={styles.sentenceBody}>
-                            <Text style={styles.sentenceOriginal}>
-                              <Text style={styles.sentenceTagAsr}>Indic ASR: </Text>
-                              {detail.original}
-                            </Text>
-                            <Text style={styles.sentenceCorrected}>
-                              <Text style={styles.sentenceTagGemini}>Gemini: </Text>
-                              {detail.corrected}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* Privacy-Preserving Gemini AI Refinement Button */}
-              <TouchableOpacity
-                style={styles.geminiRefineBtn}
-                onPress={handleRefineWithGemini}
-                disabled={isGeminiRefining || isProcessingVoice}
-              >
-                {isGeminiRefining ? (
-                  <View style={styles.geminiBtnContent}>
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={styles.geminiRefineBtnText}>🔒 De-identifying & Refining via Gemini...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.geminiBtnContent}>
-                    <Text style={styles.geminiIcon}>✨</Text>
-                    <Text style={styles.geminiRefineBtnText}>🔒 100% Accuracy AI Refine (Zero-PII Gemini)</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {geminiStatusNote && (
-                <View style={styles.geminiNoteBox}>
-                  <Text style={styles.geminiNoteText}>{geminiStatusNote}</Text>
-                </View>
-              )}
-
-              {/* Quick Word Suggestion Chips */}
-              <View style={styles.quickChipsWrapper}>
-                <Text style={styles.quickChipsTitle}>ദ്രുത തിരുത്തലുകൾ (Quick Add/Fix Words):</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickChipsScroll}>
-                  {QUICK_CORRECTION_SUGGESTIONS.map((chip, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.chipButton}
-                      onPress={() => handleAppendChip(chip.value)}
-                    >
-                      <Text style={styles.chipButtonText}>+ {chip.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
               </View>
             </View>
           )}
@@ -793,59 +822,51 @@ export default function App() {
           <View style={styles.structuredRecordCard}>
             <View style={styles.structuredHeader}>
               <View style={styles.structuredTitleRow}>
-                <Text style={styles.structuredHeaderTitle}>📋 ഘടനാപരമായ വിവരങ്ങൾ (Structured Record)</Text>
-                <View style={styles.jsonSchemaBadge}>
-                  <Text style={styles.jsonSchemaBadgeText}>JSON SCHEMA</Text>
+                <View style={styles.structuredTitleGroup}>
+                  <AppIcon name="document" size={18} color="#047857" />
+                  <Text style={styles.structuredHeaderTitle}>തിരിച്ചറിഞ്ഞ വിവരങ്ങൾ</Text>
                 </View>
-              </View>
-              <View style={styles.structuredMetaRow}>
-                <Text style={styles.structuredConfidence}>
-                  Match: {(structuredRecord.extraction.confidence_score * 100).toFixed(0)}%
-                </Text>
-                <View style={styles.structLangPill}>
-                  <Text style={styles.structLangPillText}>
-                    {structuredRecord.extraction.language_detected.toUpperCase()}
-                  </Text>
+                <View style={styles.recordStatusBadge}>
+                  <Text style={styles.recordStatusBadgeText}>തയ്യാറാണ്</Text>
                 </View>
               </View>
             </View>
 
             {/* Person & Demographics */}
             <View style={styles.sectionBlock}>
-              <Text style={styles.sectionBlockTitle}>👤 വ്യക്തിഗത വിവരങ്ങൾ (Person & Demographics)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <AppIcon name="user" size={15} color="#047857" />
+                <Text style={styles.sectionBlockTitle}>വ്യക്തിഗത വിവരങ്ങൾ</Text>
+              </View>
               <View style={styles.gridRow}>
                 <View style={styles.gridCol}>
-                  <Text style={styles.labelMuted}>പേര് (Name):</Text>
-                  <Text style={styles.valueStrong}>{structuredRecord.person.name || 'രേഖപ്പെടുത്തിയിട്ടില്ല'}</Text>
+                  <Text style={styles.labelMuted}>പേര്:</Text>
+                  <Text style={styles.valueStrong}>{structuredRecord.person.name || selectedPerson?.name || 'രേഖപ്പെടുത്തിയിട്ടില്ല'}</Text>
                 </View>
                 <View style={styles.gridCol}>
-                  <Text style={styles.labelMuted}>പ്രായം (Age):</Text>
+                  <Text style={styles.labelMuted}>പ്രായം:</Text>
                   <Text style={styles.valueStrong}>
-                    {structuredRecord.person.age !== null ? `${structuredRecord.person.age} വയസ്സ്` : 'N/A'}
+                    {structuredRecord.person.age !== null ? `${structuredRecord.person.age} വയസ്സ്` : (selectedPerson?.age !== undefined ? `${selectedPerson.age} വയസ്സ്` : 'N/A')}
                   </Text>
                 </View>
                 <View style={styles.gridCol}>
-                  <Text style={styles.labelMuted}>ലിംഗം (Sex):</Text>
-                  <Text style={styles.valueStrong}>{structuredRecord.person.sex.toUpperCase()}</Text>
+                  <Text style={styles.labelMuted}>ലിംഗം:</Text>
+                  <Text style={styles.valueStrong}>{(structuredRecord.person.sex || selectedPerson?.gender || 'N/A').toUpperCase()}</Text>
                 </View>
               </View>
-              <View style={[styles.gridRow, { marginTop: 6 }]}>
-                <View style={styles.gridCol}>
-                  <Text style={styles.labelMuted}>ഘട്ടം (Life Stage):</Text>
-                  <Text style={styles.valueStrong}>{structuredRecord.person.life_stage.toUpperCase()}</Text>
+              {structuredRecord.person.pregnancy_status === 'pregnant' && (
+                <View style={styles.pregnantPill}>
+                  <Text style={styles.pregnantPillText}>ഗർഭാവസ്ഥ (ANC Care Active)</Text>
                 </View>
-                <View style={styles.gridCol}>
-                  <Text style={styles.labelMuted}>ഗർഭാവസ്ഥ (Pregnancy):</Text>
-                  <Text style={[styles.valueStrong, structuredRecord.person.pregnancy_status === 'pregnant' && styles.alertHighlight]}>
-                    {structuredRecord.person.pregnancy_status.toUpperCase()}
-                  </Text>
-                </View>
-              </View>
+              )}
             </View>
 
             {/* Measurements & Vitals */}
             <View style={styles.sectionBlock}>
-              <Text style={styles.sectionBlockTitle}>🩺 പരിശോധനാ ഫലങ്ങൾ (Measurements & Vitals)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <AppIcon name="stethoscope" size={15} color="#047857" />
+                <Text style={styles.sectionBlockTitle}>പരിശോധനാ ഫലങ്ങൾ (Vitals)</Text>
+              </View>
               <View style={styles.vitalsRow}>
                 <View style={styles.vitalCard}>
                   <Text style={styles.vitalLabel}>ബിപി (BP)</Text>
@@ -853,22 +874,17 @@ export default function App() {
                   <Text style={styles.vitalUnit}>mmHg</Text>
                 </View>
                 <View style={styles.vitalCard}>
+                  <Text style={styles.vitalLabel}>പൾസ് (Pulse)</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.pulse_bpm !== null ? `${structuredRecord.measurements.pulse_bpm}` : '--'}</Text>
+                  <Text style={styles.vitalUnit}>bpm</Text>
+                </View>
+                <View style={styles.vitalCard}>
                   <Text style={styles.vitalLabel}>ഭാരം (Weight)</Text>
                   <Text style={styles.vitalValue}>{structuredRecord.measurements.weight_kg !== null ? `${structuredRecord.measurements.weight_kg}` : '--'}</Text>
                   <Text style={styles.vitalUnit}>kg</Text>
                 </View>
-                <View style={styles.vitalCard}>
-                  <Text style={styles.vitalLabel}>ഉയരം (Height)</Text>
-                  <Text style={styles.vitalValue}>{structuredRecord.measurements.height_cm !== null ? `${structuredRecord.measurements.height_cm}` : '--'}</Text>
-                  <Text style={styles.vitalUnit}>cm</Text>
-                </View>
               </View>
               <View style={[styles.vitalsRow, { marginTop: 6 }]}>
-                <View style={styles.vitalCard}>
-                  <Text style={styles.vitalLabel}>പൾസ് (Heart Rate)</Text>
-                  <Text style={styles.vitalValue}>{structuredRecord.measurements.pulse_bpm !== null ? `${structuredRecord.measurements.pulse_bpm}` : '--'}</Text>
-                  <Text style={styles.vitalUnit}>bpm</Text>
-                </View>
                 <View style={styles.vitalCard}>
                   <Text style={styles.vitalLabel}>ഷുഗർ (Sugar)</Text>
                   <Text style={styles.vitalValue}>{structuredRecord.measurements.blood_sugar_mg_dl !== null ? `${structuredRecord.measurements.blood_sugar_mg_dl}` : '--'}</Text>
@@ -879,36 +895,53 @@ export default function App() {
                   <Text style={styles.vitalValue}>{structuredRecord.measurements.temperature_f !== null ? `${structuredRecord.measurements.temperature_f}` : '--'}</Text>
                   <Text style={styles.vitalUnit}>°F</Text>
                 </View>
-                {structuredRecord.measurements.spo2_percent !== null && (
-                  <View style={styles.vitalCard}>
-                    <Text style={styles.vitalLabel}>ഓക്സിജൻ (SpO2)</Text>
-                    <Text style={styles.vitalValue}>{structuredRecord.measurements.spo2_percent}</Text>
-                    <Text style={styles.vitalUnit}>%</Text>
-                  </View>
-                )}
+                <View style={styles.vitalCard}>
+                  <Text style={styles.vitalLabel}>ഉയരം (Height)</Text>
+                  <Text style={styles.vitalValue}>{structuredRecord.measurements.height_cm !== null ? `${structuredRecord.measurements.height_cm}` : '--'}</Text>
+                  <Text style={styles.vitalUnit}>cm</Text>
+                </View>
               </View>
 
-              {/* Mental Health Metrics under Measurements & Vitals */}
-              <View style={[styles.vitalsRow, { marginTop: 6 }]}>
-                <View style={[styles.vitalCard, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
-                  <Text style={[styles.vitalLabel, { color: '#3730A3' }]}>Anxiety Score (GAD-2)</Text>
-                  <Text style={[styles.vitalValue, { color: '#312E81' }]}>
-                    {structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== null && structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== undefined
-                      ? `${structuredRecord.mental_social.phq4_assessment.anxiety_score} / 6`
-                      : '-'}
-                  </Text>
-                  <Text style={styles.vitalUnit}>GAD-2</Text>
+              {/* Acute BP alert if high */}
+              {(() => {
+                const bpStr = String(structuredRecord.measurements.blood_pressure || '').trim();
+                const sysVal = parseInt(bpStr.split(/[\/\s-]+/)[0], 10);
+                if (sysVal && sysVal >= 135) {
+                  return (
+                    <View style={styles.alertNoticeBox}>
+                      <AppIcon name="alert" size={14} color="#DC2626" />
+                      <Text style={styles.alertNoticeText}>
+                        രക്തസമ്മർദ്ദത്തിൽ വ്യതിയാനം (High BP: {sysVal} mmHg)
+                      </Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Mental Health Metrics */}
+              {(structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== null || structuredRecord.mental_social?.phq4_assessment?.depression_score !== null) && (
+                <View style={[styles.vitalsRow, { marginTop: 6 }]}>
+                  <View style={[styles.vitalCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+                    <Text style={[styles.vitalLabel, { color: '#475569' }]}>Anxiety Score (GAD-2)</Text>
+                    <Text style={[styles.vitalValue, { color: '#0F172A' }]}>
+                      {structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== null && structuredRecord.mental_social?.phq4_assessment?.anxiety_score !== undefined
+                        ? `${structuredRecord.mental_social.phq4_assessment.anxiety_score} / 6`
+                        : '-'}
+                    </Text>
+                    <Text style={styles.vitalUnit}>GAD-2</Text>
+                  </View>
+                  <View style={[styles.vitalCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+                    <Text style={[styles.vitalLabel, { color: '#475569' }]}>Depression Score (PHQ-2)</Text>
+                    <Text style={[styles.vitalValue, { color: '#0F172A' }]}>
+                      {structuredRecord.mental_social?.phq4_assessment?.depression_score !== null && structuredRecord.mental_social?.phq4_assessment?.depression_score !== undefined
+                        ? `${structuredRecord.mental_social.phq4_assessment.depression_score} / 6`
+                        : '-'}
+                    </Text>
+                    <Text style={styles.vitalUnit}>PHQ-2</Text>
+                  </View>
                 </View>
-                <View style={[styles.vitalCard, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
-                  <Text style={[styles.vitalLabel, { color: '#3730A3' }]}>Depression Score (PHQ-2)</Text>
-                  <Text style={[styles.vitalValue, { color: '#312E81' }]}>
-                    {structuredRecord.mental_social?.phq4_assessment?.depression_score !== null && structuredRecord.mental_social?.phq4_assessment?.depression_score !== undefined
-                      ? `${structuredRecord.mental_social.phq4_assessment.depression_score} / 6`
-                      : '-'}
-                  </Text>
-                  <Text style={styles.vitalUnit}>PHQ-2</Text>
-                </View>
-              </View>
+              )}
 
               {/* Extra Metric Box for WHO Growth Z-Score (Infant/Child Scoped ONLY) */}
               {(structuredRecord.nutrition.child_nutrition.sam_mam_risk !== 'unknown' || (structuredRecord.person.age !== null && structuredRecord.person.age <= 5)) && (
@@ -918,8 +951,8 @@ export default function App() {
                   activeOpacity={0.8}
                 >
                   <View style={[styles.vitalCard, { flex: 1, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', paddingVertical: 8 }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={[styles.vitalLabel, { color: '#166534' }]}>📊 WHO Growth Z-Score (WAZ)</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <Text style={[styles.vitalLabel, { color: '#166534' }]}>WHO Growth Z-Score (WAZ)</Text>
                       <View style={{
                         backgroundColor: structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'sam' ? '#FEE2E2' : (structuredRecord.nutrition.child_nutrition.sam_mam_risk === 'mam' ? '#FEF3C7' : '#DCFCE7'),
                         paddingHorizontal: 8,
@@ -938,7 +971,7 @@ export default function App() {
                     <Text style={[styles.vitalValue, { color: '#14532D', marginTop: 4 }]}>
                       {structuredRecord.care_history.allergies.find(a => a.includes('WHO WAZ')) || 'WAZ: -1.53'}
                     </Text>
-                    <Text style={[styles.vitalUnit, { color: '#15803D' }]}>Tap to view WHO Classification Ranges ➔</Text>
+                    <Text style={[styles.vitalUnit, { color: '#15803D' }]}>വിശദാംശങ്ങൾക്ക് ടാപ്പ് ചെയ്യുക</Text>
                   </View>
                 </TouchableOpacity>
               )}
@@ -946,7 +979,10 @@ export default function App() {
 
             {/* Health Status: Complaints, Conditions, Medications */}
             <View style={styles.sectionBlock}>
-              <Text style={styles.sectionBlockTitle}>💊 ലക്ഷണങ്ങളും മരുന്നുകളും (Health Status)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <AppIcon name="pill" size={15} color="#047857" />
+                <Text style={styles.sectionBlockTitle}>ലക്ഷണങ്ങളും മരുന്നുകളും</Text>
+              </View>
               {structuredRecord.health_status.complaints.length > 0 ? (
                 structuredRecord.health_status.complaints.map((c, i) => (
                   <Text key={i} style={styles.bulletItem}>
@@ -959,7 +995,7 @@ export default function App() {
 
               {structuredRecord.health_status.medications.length > 0 && (
                 <View style={{ marginTop: 6 }}>
-                  <Text style={styles.subHeading}>മരുന്നുകൾ (Medications):</Text>
+                  <Text style={styles.subHeading}>നൽകിയ മരുന്നുകൾ:</Text>
                   {structuredRecord.health_status.medications.map((m, i) => (
                     <Text key={i} style={styles.bulletItem}>
                       • <Text style={styles.bold}>{m.name}</Text> ({m.adherence.toUpperCase()})
@@ -972,7 +1008,10 @@ export default function App() {
             {/* Care Gaps */}
             {structuredRecord.care_gaps.length > 0 && (
               <View style={styles.careGapsBlock}>
-                <Text style={styles.careGapsBlockTitle}>⚠️ ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ (Care Gaps Detected):</Text>
+                <View style={styles.sectionHeaderRow}>
+                  <AppIcon name="alert" size={14} color="#991B1B" />
+                  <Text style={styles.careGapsBlockTitle}>ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ:</Text>
+                </View>
                 {structuredRecord.care_gaps.map((gap, i) => (
                   <View key={i} style={styles.gapRowItem}>
                     <View style={[styles.gapBadge, gap.severity === 'high' ? styles.gapBadgeHigh : styles.gapBadgeMed]}>
@@ -986,40 +1025,25 @@ export default function App() {
 
             {/* Follow-up */}
             <View style={styles.sectionBlock}>
-              <Text style={styles.sectionBlockTitle}>📅 തുടർപരിശോധന (Follow-up & Referral)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <AppIcon name="calendar" size={14} color="#047857" />
+                <Text style={styles.sectionBlockTitle}>തുടർപരിശോധന (Follow-up)</Text>
+              </View>
               <Text style={styles.bulletItem}>
                 • ആവശ്യമുള്ളത്: <Text style={styles.bold}>{structuredRecord.follow_up.required.toUpperCase()}</Text>
                 {structuredRecord.follow_up.due_date ? ` (തീയതി: ${structuredRecord.follow_up.due_date})` : ''}
               </Text>
-              <Text style={styles.bulletItem}>
-                • ചുമതലപ്പെടുത്തിയത്: <Text style={styles.bold}>{structuredRecord.follow_up.assigned_to.toUpperCase()}</Text>
-                {structuredRecord.follow_up.reason ? ` - ${structuredRecord.follow_up.reason}` : ''}
-              </Text>
-            </View>
-
-            {/* Direct Inline Structured JSON Output Display */}
-            <View style={styles.inlineJsonBox}>
-              <View style={styles.inlineJsonHeader}>
-                <Text style={styles.inlineJsonTitle}>{'{ }'} എക്സ്ട്രാക്റ്റ് ചെയ്ത JSON (Structured Output):</Text>
-                <TouchableOpacity
-                  style={styles.inlineJsonExpandBtn}
-                  onPress={() => handleOpenJsonModal(structuredRecord, 'Full Schema JSON')}
-                >
-                  <Text style={styles.inlineJsonExpandBtnText}>⛶ Fullscreen</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput
-                style={styles.inlineJsonContent}
-                multiline
-                editable={false}
-                selectTextOnFocus
-                value={JSON.stringify(structuredRecord, null, 2)}
-              />
+              {structuredRecord.follow_up.reason ? (
+                <Text style={styles.bulletItem}>
+                  • നിർദ്ദേശം: <Text style={styles.bold}>{structuredRecord.follow_up.reason}</Text>
+                </Text>
+              ) : null}
             </View>
 
             {/* Save Feedback Alert */}
             {saveFeedbackMsg && (
               <View style={styles.saveAlertBox}>
+                <AppIcon name="check" size={14} color="#03543F" />
                 <Text style={styles.saveAlertText}>{saveFeedbackMsg}</Text>
               </View>
             )}
@@ -1028,67 +1052,85 @@ export default function App() {
             <View style={styles.actionButtonRow}>
               <TouchableOpacity
                 style={styles.saveRecordBtn}
-                onPress={handleSaveCurrentRecord}
+                onPress={handleConfirmVisit}
                 disabled={isSavingRecord}
+                activeOpacity={0.85}
               >
                 {isSavingRecord ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.saveRecordBtnText}>💾 സേവ് ചെയ്യുക{"\n"}(Save Record Offline)</Text>
+                  <View style={styles.saveBtnContent}>
+                    <AppIcon name="check" size={16} color="#FFFFFF" />
+                    <Text style={styles.saveRecordBtnText}>സ്ഥിരീകരിച്ച് സേവ് ചെയ്യുക</Text>
+                  </View>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.viewJsonBtn}
-                onPress={() => handleOpenJsonModal(structuredRecord)}
+                style={styles.cancelDraftBtn}
+                onPress={handleCancelEntry}
+                activeOpacity={0.8}
               >
-                <Text style={styles.viewJsonBtnText}>🔍 View JSON</Text>
+                <Text style={styles.cancelDraftBtnText}>റദ്ദാക്കുക</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.viewStructuredBtn}
+                onPress={() => handleOpenStructuredRecordModal(structuredRecord)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.viewStructuredBtnText}>വിശദാംശങ്ങൾ</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Offline Stored Clinical Records History */}
+        {/* Central Stored Clinical Records History */}
         <View style={styles.historyCard}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>
-              📁 സേവ് ചെയ്ത രേഖകൾ{"\n"}({savedRecords.length} Saved Offline)
-            </Text>
+            <View>
+              <Text style={styles.historyTitle}>
+                സേവ് ചെയ്ത രേഖകൾ ({savedRecords.length})
+              </Text>
+              <Text style={styles.historySubtitle}>Stored in Central MongoDB Database</Text>
+            </View>
             {savedRecords.length > 0 && (
-              <TouchableOpacity style={styles.exportAllBtn} onPress={handleOpenBatchExportModal}>
-                <Text style={styles.exportAllBtnText}>📦 Export JSON</Text>
+              <TouchableOpacity style={styles.exportAllBtn} onPress={handleOpenBatchExportModal} activeOpacity={0.8}>
+                <Text style={styles.exportAllBtnText}>റിപ്പോർട്ട്</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {savedRecords.length === 0 ? (
             <Text style={styles.emptyHistoryText}>
-              ഇതുവരെ രേഖകൾ ഒന്നും സേവ് ചെയ്തിട്ടില്ല. ശബ്ദം റെക്കോർഡ് ചെയ്ത് "Save Record" ക്ലിക്ക് ചെയ്യുക.
+              ഇതുവരെ രേഖകൾ ഒന്നും സേവ് ചെയ്തിട്ടില്ല. ശബ്ദം റെക്കോർഡ് ചെയ്ത് "സ്ഥിരീകരിച്ച് സേവ് ചെയ്യുക" ക്ലിക്ക് ചെയ്യുക.
             </Text>
           ) : (
             savedRecords.map((item) => (
               <View key={item.visit.visit_id} style={styles.historyItem}>
                 <View style={styles.historyItemTop}>
                   <Text style={styles.historyItemName}>
-                    {item.person.name || 'Unnamed Person'} ({item.person.age !== null ? `${item.person.age}y` : '?'}, {item.person.sex})
+                    {item.person.name || 'Beneficiary'} ({item.person.age !== null ? `${item.person.age}y` : '?'}, {item.person.sex.toUpperCase()})
                   </Text>
                   <Text style={styles.historyItemDate}>{item.visit.date}</Text>
                 </View>
                 <Text style={styles.historyItemDetails}>
-                  BP: {item.measurements.blood_pressure || '--'} | Wt: {item.measurements.weight_kg ? `${item.measurements.weight_kg}kg` : '--'} | Gaps: {item.care_gaps.length}
+                  BP: {item.measurements.blood_pressure || '--'} | Wt: {item.measurements.weight_kg ? `${item.measurements.weight_kg}kg` : '--'} | Sugar: {item.measurements.blood_sugar_mg_dl ? `${item.measurements.blood_sugar_mg_dl}mg/dL` : '--'}
                 </Text>
                 <View style={styles.historyItemActions}>
                   <TouchableOpacity
                     style={styles.historyViewBtn}
-                    onPress={() => handleOpenJsonModal(item, `Visit: ${item.visit.visit_id}`)}
+                    onPress={() => handleOpenStructuredRecordModal(item)}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.historyViewBtnText}>👁️ View JSON</Text>
+                    <Text style={styles.historyViewBtnText}>വിശദാംശങ്ങൾ</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.historyDelBtn}
                     onPress={() => handleDeleteRecord(item.visit.visit_id)}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.historyDelBtnText}>🗑️ Delete</Text>
+                    <Text style={styles.historyDelBtnText}>ഡിലീറ്റ്</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1096,90 +1138,44 @@ export default function App() {
           )}
         </View>
 
-        {/* Clinical Extraction Review & Confirmation Gate */}
-        {visitDraft && (
-          <View style={styles.confirmationCard}>
-            <View style={styles.confHeader}>
-              <Text style={styles.confBadge}>തിരിച്ചറിഞ്ഞ വിവരങ്ങൾ (Extracted Record)</Text>
-              <Text style={styles.confConfidence}>Confidence: {(visitDraft.confidence * 100).toFixed(0)}%</Text>
-            </View>
-
-            <Text style={styles.transcriptSnippet}>
-              🗣️ മലയാളം സംഗ്രഹം: "{visitDraft.transcript}"
-            </Text>
-
-            {visitDraft.person_updates.map((update, idx) => (
-              <View key={idx} style={styles.extractedTable}>
-                <Text style={styles.tableRow}><Text style={styles.bold}>വ്യക്തി (Person):</Text> {update.name}</Text>
-                {update.vitals && (
-                  <>
-                    <Text style={styles.tableRow}>
-                      <Text style={styles.bold}>രക്തസമ്മർദ്ദം (BP):</Text> {update.vitals.systolic_bp}/{update.vitals.diastolic_bp} mmHg
-                    </Text>
-                    {update.vitals.systolic_bp && update.vitals.systolic_bp >= 135 && (
-                      <View style={{ backgroundColor: '#FEF2F2', padding: 8, borderRadius: 6, marginVertical: 4, borderWidth: 1, borderColor: '#FCA5A5' }}>
-                        <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: 'bold' }}>
-                          ⚠️ രക്തസമ്മർദ്ദത്തിൽ വ്യതിയാനം (Acute Vitals Delta Spurt: +{Math.round(update.vitals.systolic_bp - 120)} mmHg above baseline)
-                        </Text>
-                        <TouchableOpacity onPress={() => setActiveTab('vitals')} style={{ marginTop: 3 }}>
-                          <Text style={{ fontSize: 11, color: '#1D4ED8', fontWeight: 'bold' }}>
-                            📊 Compare with 6-Month Baseline in Vitals Engine →
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    <Text style={styles.tableRow}>
-                      <Text style={styles.bold}>ശരീരഭാരം (Weight):</Text> {update.vitals.weight_kg} kg
-                    </Text>
-                  </>
-                )}
-                {update.medications_given && (
-                  <Text style={styles.tableRow}>
-                    <Text style={styles.bold}>നൽകിയ മരുന്നുകൾ:</Text> {update.medications_given.join(', ')}
-                  </Text>
-                )}
-                <Text style={styles.tableRow}>
-                  <Text style={styles.bold}>Mental Health (മാനസികാരോഗ്യം):</Text>{' '}
-                  Anxiety Score (GAD-2): {update.mental_health?.anxiety_score !== undefined && update.mental_health?.anxiety_score !== null ? `${update.mental_health.anxiety_score}/6` : '-'} | Depression Score (PHQ-2): {update.mental_health?.depression_score !== undefined && update.mental_health?.depression_score !== null ? `${update.mental_health.depression_score}/6` : '-'}
-                </Text>
-                {update.follow_up_date && (
-                  <Text style={styles.tableRow}>
-                    <Text style={styles.bold}>അടുത്ത സന്ദർശനം:</Text> {update.follow_up_date}
-                  </Text>
-                )}
-              </View>
-            ))}
-
-            {/* Confirmation Gate Buttons */}
-            <View style={styles.confActions}>
-              <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmVisit}>
-                <Text style={styles.confirmButtonText}>✓ ശരിയാണ് (Confirm & Save)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setVisitDraft(null)}
-              >
-                <Text style={styles.cancelButtonText}>മാറ്റുക (Edit)</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
 
       </ScrollView>
       )}
 
       {/* Feature Module Views */}
-      {activeTab === 'mental' && <MentalHealthScreen />}
+      {activeTab === 'mental' && (
+        <MentalHealthScreen
+          activePerson={selectedPerson}
+          activeHousehold={selectedHousehold}
+          households={households}
+          householdMembers={householdMembers}
+          onSelectHousehold={handleSelectHousehold}
+          onSelectPerson={handleSelectPerson}
+          isLoadingMembers={isLoadingMembers}
+          onAddNewMember={handleAddNewMember}
+          onAddNewHousehold={handleAddNewHousehold}
+          workerId={currentUser?.worker_id}
+          onSaved={refreshSavedRecords}
+        />
+      )}
       {activeTab === 'climate' && <EnvironmentalRiskScreen />}
       {activeTab === 'lifestyle' && <NcdLifestyleScreen onBack={() => setActiveTab('core')} />}
       {activeTab === 'vitals' && <VitalsBaselineScreen />}
+      {activeTab === 'profile' && (
+        <AshaProfileScreen
+          currentUser={currentUser}
+          activeWard={activeWard}
+          onUpdateWard={(newWard) => {
+            setActiveWard(newWard);
+            setLastActionMessage(`വാർഡ് മാറ്റി: ${newWard}`);
+          }}
+          onLogout={handleLogout}
+          onBack={() => setActiveTab('core')}
+        />
+      )}
 
       {/* Persistent Bottom Tab Navigation Bar */}
       <BottomTabBar activeTab={activeTab} onTabSelect={setActiveTab} />
-
-      {/* Floating Robot Head ASHA Copilot Button (Bottom-Right) */}
-      <FloatingRobotButton onPress={() => setIsChatbotOpen(true)} />
 
       {/* Swaram ASHA AI Chatbot Modal */}
       <AshaChatbotModal
@@ -1187,36 +1183,275 @@ export default function App() {
         onClose={() => setIsChatbotOpen(false)}
       />
 
-      {/* Raw Schema JSON Viewer Modal */}
+      {/* Structured Clinical Record Detail Pop-up Modal (No Raw JSON) */}
       <Modal
-        visible={showJsonModal}
+        visible={showStructuredViewModal && selectedRecordToView !== null}
         animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowJsonModal(false)}
+        transparent={true}
+        onRequestClose={() => setShowStructuredViewModal(false)}
       >
-        <SafeAreaView style={styles.modalSafeArea}>
-          <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>{jsonModalTitle}</Text>
-              <Text style={styles.modalSubtitle}>Strict Canonical Clinical JSON Schema</Text>
+        <View style={styles.structuredModalOverlay}>
+          <View style={styles.structuredModalCard}>
+            <View style={styles.structuredModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.structuredModalTitle}>
+                  {selectedRecordToView?.person.name || 'ഗുണഭോക്താവ്'} - ക്ലിനിക്കൽ വിവരങ്ങൾ
+                </Text>
+                <Text style={styles.structuredModalSubtitle}>
+                  വിസിറ്റ് തീയതി: {selectedRecordToView?.visit.date} • ID: {selectedRecordToView?.visit.visit_id}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.structuredModalCloseBtn}
+                onPress={() => setShowStructuredViewModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.structuredModalCloseText}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowJsonModal(false)}>
-              <Text style={styles.modalCloseBtnText}>✕ Close</Text>
+
+            {selectedRecordToView && (
+              <ScrollView style={styles.structuredModalScroll} showsVerticalScrollIndicator={false}>
+                {/* Person Demographics Card */}
+                <View style={styles.modalSectionCard}>
+                  <Text style={styles.modalSectionHeading}>വ്യക്തിഗത വിവരങ്ങൾ (Beneficiary Details)</Text>
+                  <View style={styles.modalDetailGrid}>
+                    <View style={styles.modalDetailCol}>
+                      <Text style={styles.modalDetailLabel}>പേര് (Name):</Text>
+                      <Text style={styles.modalDetailVal}>{selectedRecordToView.person.name || 'രേഖപ്പെടുത്തിയിട്ടില്ല'}</Text>
+                    </View>
+                    <View style={styles.modalDetailCol}>
+                      <Text style={styles.modalDetailLabel}>പ്രായം (Age):</Text>
+                      <Text style={styles.modalDetailVal}>
+                        {selectedRecordToView.person.age !== null ? `${selectedRecordToView.person.age} വയസ്സ്` : 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.modalDetailCol}>
+                      <Text style={styles.modalDetailLabel}>ലിംഗം (Sex):</Text>
+                      <Text style={styles.modalDetailVal}>{selectedRecordToView.person.sex.toUpperCase()}</Text>
+                    </View>
+                  </View>
+                  {selectedRecordToView.person.pregnancy_status === 'pregnant' && (
+                    <View style={styles.pregnantNoticeBox}>
+                      <Text style={styles.pregnantNoticeText}>ഗർഭാവസ്ഥയിലുള്ള ഗുണഭോക്താവ് (ANC Care Active)</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Vitals & Measurements Card */}
+                <View style={styles.modalSectionCard}>
+                  <Text style={styles.modalSectionHeading}>പരിശോധനാ ഫലങ്ങൾ (Measurements & Vitals)</Text>
+                  <View style={styles.modalVitalsGrid}>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>രക്തസമ്മർദ്ദം (BP)</Text>
+                      <Text style={styles.modalVitalVal}>{selectedRecordToView.measurements.blood_pressure || '--'}</Text>
+                      <Text style={styles.modalVitalUnit}>mmHg</Text>
+                    </View>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>ശരീരഭാരം (Weight)</Text>
+                      <Text style={styles.modalVitalVal}>
+                        {selectedRecordToView.measurements.weight_kg !== null ? `${selectedRecordToView.measurements.weight_kg}` : '--'}
+                      </Text>
+                      <Text style={styles.modalVitalUnit}>kg</Text>
+                    </View>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>ഉയരം (Height)</Text>
+                      <Text style={styles.modalVitalVal}>
+                        {selectedRecordToView.measurements.height_cm !== null ? `${selectedRecordToView.measurements.height_cm}` : '--'}
+                      </Text>
+                      <Text style={styles.modalVitalUnit}>cm</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.modalVitalsGrid, { marginTop: 6 }]}>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>പൾസ് (Pulse)</Text>
+                      <Text style={styles.modalVitalVal}>
+                        {selectedRecordToView.measurements.pulse_bpm !== null ? `${selectedRecordToView.measurements.pulse_bpm}` : '--'}
+                      </Text>
+                      <Text style={styles.modalVitalUnit}>bpm</Text>
+                    </View>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>ഷുഗർ (Sugar)</Text>
+                      <Text style={styles.modalVitalVal}>
+                        {selectedRecordToView.measurements.blood_sugar_mg_dl !== null ? `${selectedRecordToView.measurements.blood_sugar_mg_dl}` : '--'}
+                      </Text>
+                      <Text style={styles.modalVitalUnit}>mg/dL</Text>
+                    </View>
+                    <View style={styles.modalVitalItem}>
+                      <Text style={styles.modalVitalLabel}>പനി (Temp)</Text>
+                      <Text style={styles.modalVitalVal}>
+                        {selectedRecordToView.measurements.temperature_f !== null ? `${selectedRecordToView.measurements.temperature_f}` : '--'}
+                      </Text>
+                      <Text style={styles.modalVitalUnit}>°F</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Symptoms & Complaints Card */}
+                <View style={styles.modalSectionCard}>
+                  <Text style={styles.modalSectionHeading}>ലക്ഷണങ്ങളും രോഗവിവരങ്ങളും (Symptoms)</Text>
+                  {selectedRecordToView.health_status.complaints.length > 0 ? (
+                    selectedRecordToView.health_status.complaints.map((c, i) => (
+                      <Text key={i} style={styles.modalBulletItem}>
+                        • <Text style={{ fontWeight: '700' }}>{c.symptom}</Text> ({c.duration}, {c.severity})
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.modalEmptyMuted}>പ്രത്യേക അസുഖ ലക്ഷണങ്ങൾ ഇല്ല (No acute complaints)</Text>
+                  )}
+                </View>
+
+                {/* Medications Given Card */}
+                <View style={styles.modalSectionCard}>
+                  <Text style={styles.modalSectionHeading}>നൽകിയ മരുന്നുകൾ (Medications Given)</Text>
+                  {selectedRecordToView.health_status.medications.length > 0 ? (
+                    selectedRecordToView.health_status.medications.map((m, i) => (
+                      <Text key={i} style={styles.modalBulletItem}>
+                        • <Text style={{ fontWeight: '700' }}>{m.name}</Text> (Adherence: {m.adherence.toUpperCase()}, Taking: {m.taking.toUpperCase()})
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.modalEmptyMuted}>മരുന്നുകൾ നൽകിയിട്ടില്ല (No medications recorded)</Text>
+                  )}
+                </View>
+
+                {/* Follow-up Plan */}
+                <View style={styles.modalSectionCard}>
+                  <Text style={styles.modalSectionHeading}>തുടർപരിശോധന (Follow-up & Care Plan)</Text>
+                  <Text style={styles.modalBulletItem}>
+                    • തുടർപരിശോധന: <Text style={{ fontWeight: '700' }}>{selectedRecordToView.follow_up.required.toUpperCase()}</Text>
+                  </Text>
+                  {selectedRecordToView.follow_up.due_date && (
+                    <Text style={styles.modalBulletItem}>
+                      • തീയതി (Due Date): <Text style={{ fontWeight: '700' }}>{selectedRecordToView.follow_up.due_date}</Text>
+                    </Text>
+                  )}
+                  {selectedRecordToView.follow_up.reason && (
+                    <Text style={styles.modalBulletItem}>
+                      • നിർദ്ദേശം: {selectedRecordToView.follow_up.reason}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Share/Copy Action Button */}
+                <TouchableOpacity
+                  style={styles.modalShareBtn}
+                  onPress={async () => {
+                    const report = formatStructuredRecordToReport(selectedRecordToView);
+                    try {
+                      await Share.share({ message: report, title: 'Swaram Clinical Report' });
+                    } catch (e) {
+                      console.warn('Share error:', e);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalShareBtnText}>റിപ്പോർട്ട് ഷെയർ ചെയ്യുക</Text>
+                </TouchableOpacity>
+
+                <View style={{ height: 16 }} />
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Structured Clinical Report Export Modal */}
+      <Modal
+        visible={showExportReportModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowExportReportModal(false)}
+      >
+        <View style={styles.structuredModalOverlay}>
+          <View style={styles.structuredModalCard}>
+            <View style={styles.structuredModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.structuredModalTitle}>ക്ലിനിക്കൽ റിപ്പോർട്ട്</Text>
+                <Text style={styles.structuredModalSubtitle}>Formatted structured records for field reporting</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.structuredModalCloseBtn}
+                onPress={() => setShowExportReportModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.structuredModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.structuredModalScroll}>
+              <TextInput
+                style={styles.exportReportTextInput}
+                multiline
+                editable={false}
+                value={exportReportText}
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalShareBtn}
+              onPress={async () => {
+                try {
+                  await Share.share({ message: exportReportText, title: 'Swaram All Records Summary' });
+                } catch (e) {
+                  console.warn('Share error:', e);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalShareBtnText}>മുഴുവൻ റിപ്പോർട്ടും ഷെയർ ചെയ്യുക (Share Report)</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.modalNotice}>
-            <Text style={styles.modalNoticeText}>
-              📋 Tap and hold text inside the code viewer below to select/copy:
-            </Text>
+        </View>
+      </Modal>
+
+      {/* Ward Selector Modal (10 Wards) */}
+      <Modal
+        visible={showWardModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowWardModal(false)}
+      >
+        <View style={styles.structuredModalOverlay}>
+          <View style={[styles.structuredModalCard, { maxHeight: 480 }]}>
+            <View style={styles.structuredModalHeader}>
+              <View>
+                <Text style={styles.structuredModalTitle}>വാർഡ് തിരഞ്ഞെടുക്കുക</Text>
+                <Text style={styles.structuredModalSubtitle}>ആലുവ മുനിസിപ്പാലിറ്റി (Select Health Ward)</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.structuredModalCloseBtn}
+                onPress={() => setShowWardModal(false)}
+              >
+                <Text style={styles.structuredModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ marginTop: 8 }}>
+              {ALL_ALUVA_WARDS.map((w, idx) => {
+                const isSelected = activeWard === w;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.wardModalItem, isSelected && styles.wardModalItemSelected]}
+                    onPress={() => {
+                      setActiveWard(w);
+                      setShowWardModal(false);
+                      setLastActionMessage(`വാർഡ് മാറ്റി: ${w}`);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.wardModalItemText, isSelected && styles.wardModalItemTextSelected]}>
+                      {w}
+                    </Text>
+                    {isSelected && <AppIcon name="check" size={16} color="#0D9488" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-          <TextInput
-            style={styles.modalJsonInput}
-            multiline
-            editable={false}
-            selectTextOnFocus
-            value={activeJsonToView}
-          />
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* WHO Growth Z-Score Interactive Ranges Modal */}
@@ -1232,7 +1467,7 @@ export default function App() {
           onPress={() => setShowZScoreModal(false)}
         >
           <View style={styles.zModalContainer}>
-            <Text style={styles.zModalTitle}>📊 WHO Child Growth Z-Score Ranges</Text>
+            <Text style={styles.zModalTitle}>WHO Child Growth Z-Score Ranges</Text>
             <Text style={styles.zModalSubtitle}>Weight-for-Age (WAZ) Standard Classification</Text>
 
             {/* Current Active Category Banner */}
@@ -1244,22 +1479,34 @@ export default function App() {
 
             <View style={styles.zRangesList}>
               <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'normal' && styles.zRangeItemActiveNormal]}>
-                <Text style={[styles.zRangeTitle, { color: '#065F46' }]}>🟩 Normal Growth (Z ≥ -1.0)</Text>
+                <View style={styles.zRangeTitleRow}>
+                  <View style={[styles.colorChip, { backgroundColor: '#059669' }]} />
+                  <Text style={[styles.zRangeTitle, { color: '#065F46' }]}>Normal Growth (Z ≥ -1.0)</Text>
+                </View>
                 <Text style={styles.zRangeDesc}>Healthy weight trajectory according to WHO growth standards.</Text>
               </View>
 
               <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'mild' && styles.zRangeItemActiveMild]}>
-                <Text style={[styles.zRangeTitle, { color: '#854D0E' }]}>🟨 Mild Underweight {"(-2.0 ≤ Z < -1.0)"}</Text>
+                <View style={styles.zRangeTitleRow}>
+                  <View style={[styles.colorChip, { backgroundColor: '#D97706' }]} />
+                  <Text style={[styles.zRangeTitle, { color: '#854D0E' }]}>Mild Underweight {"(-2.0 ≤ Z < -1.0)"}</Text>
+                </View>
                 <Text style={styles.zRangeDesc}>Slightly lower weight trajectory; monitor dietary intake.</Text>
               </View>
 
               <View style={[styles.zRangeItem, (structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'mam' || !structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk) && styles.zRangeItemActiveMam]}>
-                <Text style={[styles.zRangeTitle, { color: '#9A3412' }]}>🟧 MAM - Moderate Acute Malnutrition {"(-3.0 ≤ Z < -2.0)"}</Text>
+                <View style={styles.zRangeTitleRow}>
+                  <View style={[styles.colorChip, { backgroundColor: '#EA580C' }]} />
+                  <Text style={[styles.zRangeTitle, { color: '#9A3412' }]}>MAM - Moderate Acute Malnutrition {"(-3.0 ≤ Z < -2.0)"}</Text>
+                </View>
                 <Text style={styles.zRangeDesc}>Moderate underweight; dietary diversity & IFA supplementation indicated.</Text>
               </View>
 
               <View style={[styles.zRangeItem, structuredRecord?.nutrition?.child_nutrition?.sam_mam_risk === 'sam' && styles.zRangeItemActiveSam]}>
-                <Text style={[styles.zRangeTitle, { color: '#991B1B' }]}>🟥 SAM - Severe Acute Malnutrition {"(Z < -3.0)"}</Text>
+                <View style={styles.zRangeTitleRow}>
+                  <View style={[styles.colorChip, { backgroundColor: '#DC2626' }]} />
+                  <Text style={[styles.zRangeTitle, { color: '#991B1B' }]}>SAM - Severe Acute Malnutrition {"(Z < -3.0)"}</Text>
+                </View>
                 <Text style={styles.zRangeDesc}>Severe underweight; immediate medical officer evaluation required.</Text>
               </View>
             </View>
@@ -1274,42 +1521,216 @@ export default function App() {
   );
 }
 
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MainApp />
+    </SafeAreaProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6'
+    backgroundColor: '#FFFFFF'
   },
   header: {
-    backgroundColor: '#064E3B',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    backgroundColor: '#042F2E',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4
+      },
+      android: {
+        elevation: 4
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+      }
+    })
+  },
+  headerBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  logoCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0F766E',
+    borderWidth: 1.5,
+    borderColor: '#2DD4BF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  headerLogoImage: {
+    width: 32,
+    height: 32
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    letterSpacing: 0.5
+    letterSpacing: -0.2
   },
-  headerSubtitle: {
-    fontSize: 12,
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  headerAiButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#34D399',
+    position: 'relative'
+  },
+  headerAiDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#34D399'
+  },
+  moreMenuButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)'
+  },
+  moreMenuIcon: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: -2
+  },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'web' ? 56 : (StatusBar.currentHeight ? StatusBar.currentHeight + 50 : 54),
+    paddingRight: 16
+  },
+  dropdownMenu: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    minWidth: 190,
+    paddingVertical: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 10
+      },
+      android: {
+        elevation: 8
+      },
+      web: {
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.18)'
+      }
+    }),
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  dropdownMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12
+  },
+  dropdownMenuIcon: {
+    fontSize: 18
+  },
+  dropdownMenuText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: '#1E293B'
+  },
+  dropdownMenuTextDanger: {
+    color: '#EF4444'
+  },
+  dropdownMenuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginHorizontal: 8
+  },
+  subHeader: {
+    backgroundColor: '#064E3B',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)'
+  },
+  subHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1
+  },
+  subHeaderPinCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  subHeaderTextCol: {
+    flex: 1
+  },
+  subHeaderLabel: {
+    fontSize: 10.5,
     color: '#A7F3D0',
-    marginTop: 2
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase'
   },
-  conceptPill: {
-    backgroundColor: '#065F46',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    marginTop: 4,
-    alignSelf: 'flex-start'
+  subHeaderWardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 1
   },
-  conceptPillText: {
-    color: '#E6FFFA',
-    fontSize: 10,
-    fontWeight: '600'
+  subHeaderChangeBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginLeft: 8
+  },
+  subHeaderChangeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700'
   },
   syncBadge: {
     backgroundColor: '#047857',
@@ -1323,7 +1744,8 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   scrollContent: {
-    padding: 16,
+    paddingTop: 0,
+    paddingHorizontal: 0,
     paddingBottom: 40
   },
   networkBanner: {
@@ -1501,10 +1923,26 @@ const styles = StyleSheet.create({
 
   voiceSection: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
+    marginHorizontal: 16,
     marginBottom: 16,
-    elevation: 2
+    borderWidth: 1.5,
+    borderColor: '#0D9488',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0D9488',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 10
+      },
+      android: {
+        elevation: 5
+      },
+      web: {
+        boxShadow: '0 4px 16px rgba(13, 148, 136, 0.16)'
+      }
+    })
   },
   sectionHeading: {
     fontSize: 16,
@@ -1617,53 +2055,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8
   },
-  micIcon: {
-    fontSize: 18,
-    color: '#FFFFFF'
+  recPulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    marginRight: 2
   },
   recordButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: 'bold'
-  },
-
-  geminiRefineBtn: {
-    backgroundColor: '#047857',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: '#34D399',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  geminiBtnContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  geminiIcon: {
-    fontSize: 14,
-    color: '#FDE047',
-  },
-  geminiRefineBtnText: {
-    color: '#ECFDF5',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  geminiNoteBox: {
-    backgroundColor: '#064E3B',
-    padding: 8,
-    borderRadius: 6,
-    marginTop: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: '#34D399',
-  },
-  geminiNoteText: {
-    color: '#A7F3D0',
-    fontSize: 11,
-    lineHeight: 16,
   },
   indicConformerCard: {
     backgroundColor: '#062E20',
@@ -1679,17 +2081,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8
   },
-  indicConformerBadge: {
-    backgroundColor: '#059669',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4
-  },
-  indicConformerBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5
+  transcriptCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E6FFFA'
   },
   indicConformerLang: {
     color: '#34D399',
@@ -1708,7 +2103,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6
+    marginBottom: 8
+  },
+  editTranscriptTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
   },
   editTranscriptHint: {
     fontSize: 11,
@@ -1717,14 +2117,17 @@ const styles = StyleSheet.create({
   },
   reanalyzeBtn: {
     backgroundColor: '#059669',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6
   },
   reanalyzeBtnText: {
     color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold'
+    fontSize: 11,
+    fontWeight: '700'
   },
   indicConformerInput: {
     color: '#F0FDF4',
@@ -1735,39 +2138,12 @@ const styles = StyleSheet.create({
     padding: 0,
     textAlignVertical: 'top'
   },
-  quickChipsWrapper: {
-    marginTop: 10
-  },
-  quickChipsTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#A7F3D0',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5
-  },
-  quickChipsScroll: {
-    flexDirection: 'row'
-  },
-  chipButton: {
-    backgroundColor: '#134E39',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: '#059669'
-  },
-  chipButtonText: {
-    color: '#ECFDF5',
-    fontSize: 11,
-    fontWeight: '600'
-  },
   // Structured Record Card Styles
   structuredRecordCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 16,
+    marginHorizontal: 16,
     marginTop: 16,
     borderWidth: 1.5,
     borderColor: '#10B981',
@@ -1788,41 +2164,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
+  structuredTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
   structuredHeaderTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#065F46'
   },
-  jsonSchemaBadge: {
-    backgroundColor: '#065F46',
+  recordStatusBadge: {
+    backgroundColor: '#DCFCE7',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4
+    borderRadius: 12
   },
-  jsonSchemaBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5
-  },
-  structuredMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 6
-  },
-  structuredConfidence: {
-    fontSize: 12,
-    color: '#059669',
-    fontWeight: '600'
-  },
-  structLangPill: {
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10
-  },
-  structLangPillText: {
+  recordStatusBadgeText: {
     color: '#065F46',
     fontSize: 10,
     fontWeight: '700'
@@ -1835,11 +2193,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB'
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6
+  },
   sectionBlockTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6
+    color: '#1F2937'
   },
   gridRow: {
     flexDirection: 'row',
@@ -1949,13 +2312,48 @@ const styles = StyleSheet.create({
     color: '#7F1D1D',
     lineHeight: 16
   },
+  pregnantPill: {
+    marginTop: 6,
+    backgroundColor: '#FDF2F8',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#FBCFE8'
+  },
+  pregnantPillText: {
+    color: '#BE185D',
+    fontSize: 10.5,
+    fontWeight: '700'
+  },
+  alertNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#FCA5A5'
+  },
+  alertNoticeText: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: 'bold'
+  },
   saveAlertBox: {
     backgroundColor: '#DEF7EC',
     borderRadius: 6,
     padding: 8,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#84E1BC'
+    borderColor: '#84E1BC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6
   },
   saveAlertText: {
     color: '#03543F',
@@ -1975,103 +2373,97 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8
+    marginRight: 6
+  },
+  saveBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
   },
   saveRecordBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: 'bold'
   },
-  viewJsonBtn: {
+  cancelDraftBtn: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    marginRight: 6
+  },
+  cancelDraftBtnText: {
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  viewStructuredBtn: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  viewJsonBtnText: {
-    color: '#38BDF8',
+  viewStructuredBtnText: {
+    color: '#0D9488',
     fontSize: 12,
     fontWeight: 'bold'
-  },
-  inlineJsonBox: {
-    backgroundColor: '#0F172A',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  inlineJsonHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6
-  },
-  inlineJsonTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#38BDF8',
-    letterSpacing: 0.5
-  },
-  inlineJsonExpandBtn: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#475569'
-  },
-  inlineJsonExpandBtnText: {
-    color: '#94A3B8',
-    fontSize: 10,
-    fontWeight: '600'
-  },
-  inlineJsonContent: {
-    color: '#4ADE80',
-    fontFamily: 'monospace',
-    fontSize: 11,
-    lineHeight: 16,
-    maxHeight: 220,
-    padding: 8,
-    backgroundColor: '#020617',
-    borderRadius: 6,
-    textAlignVertical: 'top'
   },
   // Saved Records History Styles
   historyCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 16,
+    marginHorizontal: 16,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2
+    borderColor: '#E2E8F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6
+      },
+      android: {
+        elevation: 2
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+      }
+    })
   },
   historyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F1F5F9',
     paddingBottom: 8
   },
   historyTitle: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#1F2937'
+    color: '#0F172A'
+  },
+  historySubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2
   },
   exportAllBtn: {
-    backgroundColor: '#0284C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6
+    backgroundColor: '#0D9488',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8
   },
   exportAllBtnText: {
     color: '#FFFFFF',
@@ -2080,18 +2472,18 @@ const styles = StyleSheet.create({
   },
   emptyHistoryText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#94A3B8',
     fontStyle: 'italic',
     paddingVertical: 8,
     textAlign: 'center'
   },
   historyItem: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    padding: 10,
-    marginVertical: 5,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 4,
     borderWidth: 1,
-    borderColor: '#E5E7EB'
+    borderColor: '#E2E8F0'
   },
   historyItemTop: {
     flexDirection: 'row',
@@ -2099,17 +2491,17 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   historyItemName: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: 'bold',
-    color: '#111827'
+    color: '#0F172A'
   },
   historyItemDate: {
     fontSize: 11,
-    color: '#6B7280'
+    color: '#64748B'
   },
   historyItemDetails: {
-    fontSize: 11,
-    color: '#4B5563',
+    fontSize: 11.5,
+    color: '#475569',
     marginVertical: 4
   },
   historyItemActions: {
@@ -2118,26 +2510,30 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   historyViewBtn: {
-    backgroundColor: '#E0F2FE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
     marginRight: 6
   },
   historyViewBtnText: {
-    color: '#0369A1',
-    fontSize: 10,
-    fontWeight: '600'
+    color: '#0D9488',
+    fontSize: 11,
+    fontWeight: '700'
   },
   historyDelBtn: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4
+    paddingVertical: 5,
+    borderRadius: 6
   },
   historyDelBtnText: {
-    color: '#B91C1C',
-    fontSize: 10,
+    color: '#DC2626',
+    fontSize: 11,
     fontWeight: '600'
   },
   // Legacy confirmation card
@@ -2145,6 +2541,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
+    marginHorizontal: 16,
     marginTop: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -2225,61 +2622,204 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9CA3AF'
   },
-  // Modal Styles
-  modalSafeArea: {
+  // Structured and Ward Modal Styles
+  structuredModalOverlay: {
     flex: 1,
-    backgroundColor: '#0F172A'
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16
   },
-  modalHeader: {
+  structuredModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '86%',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12
+  },
+  structuredModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B'
+    borderBottomColor: '#E2E8F0'
   },
-  modalTitle: {
+  structuredModalTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC'
+    fontWeight: '700',
+    color: '#042F2E'
   },
-  modalSubtitle: {
+  structuredModalSubtitle: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: '#64748B',
     marginTop: 2
   },
-  modalCloseBtn: {
-    backgroundColor: '#334155',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6
+  structuredModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  modalCloseBtnText: {
-    color: '#FFFFFF',
+  structuredModalCloseText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  structuredModalScroll: {
+    marginTop: 12
+  },
+  modalSectionCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  modalSectionHeading: {
     fontSize: 12,
-    fontWeight: 'bold'
+    fontWeight: '700',
+    color: '#0D9488',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
   },
-  modalNotice: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155'
+  modalDetailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
   },
-  modalNoticeText: {
-    fontSize: 11,
-    color: '#38BDF8'
-  },
-  modalJsonInput: {
+  modalDetailCol: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    color: '#4ADE80',
-    fontFamily: 'monospace',
+    minWidth: 95
+  },
+  modalDetailLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 2
+  },
+  modalDetailVal: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A'
+  },
+  pregnantNoticeBox: {
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A'
+  },
+  pregnantNoticeText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '600'
+  },
+  modalVitalsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between'
+  },
+  modalVitalItem: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  modalVitalLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    marginBottom: 2
+  },
+  modalVitalVal: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#042F2E'
+  },
+  modalVitalUnit: {
+    fontSize: 10,
+    color: '#94A3B8'
+  },
+  modalBulletItem: {
     fontSize: 12,
-    lineHeight: 18,
-    padding: 14,
+    color: '#334155',
+    marginBottom: 4,
+    lineHeight: 18
+  },
+  modalEmptyMuted: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic'
+  },
+  modalShareBtn: {
+    backgroundColor: '#0D9488',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 10
+  },
+  modalShareBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  exportReportTextInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#1E293B',
+    minHeight: 280,
     textAlignVertical: 'top'
+  },
+  wardModalItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginBottom: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  wardModalItemSelected: {
+    backgroundColor: '#F0FDFA',
+    borderColor: '#0D9488'
+  },
+  wardModalItemText: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '500'
+  },
+  wardModalItemTextSelected: {
+    color: '#042F2E',
+    fontWeight: '700'
+  },
+  wardModalCheck: {
+    fontSize: 15,
+    color: '#0D9488',
+    fontWeight: 'bold'
   },
   // Z-Score Modal Styles
   zModalOverlay: {
@@ -2367,5 +2907,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700'
+  },
+  zRangeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2
+  },
+  colorChip: {
+    width: 10,
+    height: 10,
+    borderRadius: 5
   }
 });
